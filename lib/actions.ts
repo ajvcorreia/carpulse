@@ -168,6 +168,20 @@ export async function updateCar(_prevState: unknown, formData: FormData) {
   redirect(`/car/${carId}`);
 }
 
+export async function setCarRemoved(formData: FormData) {
+  const carId = String(formData.get("car_id") ?? "");
+  const removed = formData.get("removed") === "true";
+
+  if (!carId) return;
+
+  const supabase = createClient();
+  await supabase.from("cars").update({ is_removed: removed }).eq("id", carId);
+
+  revalidatePath("/");
+  revalidatePath(`/car/${carId}`);
+  redirect(`/car/${carId}`);
+}
+
 export async function addPrice(_prevState: unknown, formData: FormData) {
   const carId = String(formData.get("car_id") ?? "");
   const price = parseNumber(formData.get("price"));

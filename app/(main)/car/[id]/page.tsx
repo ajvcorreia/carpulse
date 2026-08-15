@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { getCarWithPrices } from "@/lib/data";
 import { PriceChart } from "@/components/PriceChart";
 import { AddPriceForm } from "@/components/AddPriceForm";
+import { setCarRemoved } from "@/lib/actions";
 import { formatPrice, latestDelta } from "@/lib/format";
 
 export default async function CarDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -34,13 +35,31 @@ export default async function CarDetailPage({ params }: { params: Promise<{ id: 
       </div>
 
       <div className="space-y-1">
-        <h1 className="text-xl font-semibold">
-          {car.year} {car.make} {car.model}
-        </h1>
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="text-xl font-semibold">
+            {car.year} {car.make} {car.model}
+          </h1>
+          {car.is_removed ? (
+            <span className="rounded-full bg-critical/10 px-2 py-0.5 text-xs font-medium text-critical">
+              Removed from Dubizzle
+            </span>
+          ) : null}
+        </div>
         <a href={car.url} target="_blank" rel="noreferrer" className="break-all text-sm text-series-1 hover:underline">
           {car.url}
         </a>
       </div>
+
+      <form action={setCarRemoved}>
+        <input type="hidden" name="car_id" value={car.id} />
+        <input type="hidden" name="removed" value={car.is_removed ? "false" : "true"} />
+        <button
+          type="submit"
+          className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text-secondary hover:border-series-1 hover:text-text-primary"
+        >
+          {car.is_removed ? "Mark as active again" : "Mark as removed from Dubizzle"}
+        </button>
+      </form>
 
       <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-4">
         <div>

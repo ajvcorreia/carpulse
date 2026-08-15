@@ -357,11 +357,21 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
             </thead>
             <tbody>
               {sortedRows.map(({ car, points, latest, delta }) => (
-                <tr key={car.id} className="border-b border-border last:border-0">
+                <tr
+                  key={car.id}
+                  className={`border-b border-border last:border-0 ${
+                    car.is_removed ? "opacity-50 line-through" : ""
+                  }`}
+                >
                   <td className="px-3 py-2">
                     <Link href={`/car/${car.id}`} className="font-medium text-text-primary hover:underline">
                       {car.year} {car.make} {car.model}
                     </Link>
+                    {car.is_removed ? (
+                      <span className="ml-2 rounded-full bg-critical/10 px-1.5 py-0.5 text-xs font-medium text-critical no-underline">
+                        Removed
+                      </span>
+                    ) : null}
                   </td>
                   <td className="px-3 py-2 text-text-secondary">{car.spec ?? "—"}</td>
                   <td className="px-3 py-2 text-text-secondary">{car.exterior_color ?? "—"}</td>

@@ -10,6 +10,7 @@ export type Car = {
   interior_color: string | null;
   ad_placed_at: string | null;
   created_at: string;
+  is_removed: boolean;
 };
 
 export type PricePoint = {
