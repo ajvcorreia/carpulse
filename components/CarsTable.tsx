@@ -362,6 +362,15 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
               {sortedRows.map(({ car, points, latest, delta }) => (
                 <tr
                   key={car.id}
+                  // Delegated to the whole row rather than just the small
+                  // "↗" link: more forgiving on mobile where a tap can
+                  // easily land a few pixels off, and it's the same
+                  // mousedown/touchstart-before-the-browser-acts trick so
+                  // it still catches middle-click, right-click -> "Open
+                  // link in new tab", and iOS long-press -> "Open in New
+                  // Tab" too.
+                  onMouseDown={() => setSelectedId(car.id)}
+                  onTouchStart={() => setSelectedId(car.id)}
                   className={`border-b border-border last:border-0 ${
                     car.is_removed ? "opacity-50 line-through" : ""
                   } ${selectedId === car.id ? "bg-series-1/10" : ""}`}
@@ -373,15 +382,6 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
                         target="_blank"
                         rel="noreferrer"
                         title="Open the Dubizzle listing in a new tab"
-                        // onMouseDown/onTouchStart, not just onClick: these
-                        // fire before the browser acts on the gesture, so
-                        // they also catch middle-click, right-click ->
-                        // "Open link in new tab", and iOS's long-press ->
-                        // "Open in New Tab" — none of those fire a React
-                        // click event at all.
-                        onMouseDown={() => setSelectedId(car.id)}
-                        onTouchStart={() => setSelectedId(car.id)}
-                        onClick={() => setSelectedId(car.id)}
                         className="font-medium text-text-primary hover:underline"
                       >
                         {car.year} {car.make} {car.model} ↗
