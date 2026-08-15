@@ -136,6 +136,9 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
+  // Which row's listing was last opened in a new tab — highlighted so it's
+  // obvious which one you were looking at when you switch back to this tab.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const rows = useMemo<Row[]>(
     () =>
@@ -361,7 +364,7 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
                   key={car.id}
                   className={`border-b border-border last:border-0 ${
                     car.is_removed ? "opacity-50 line-through" : ""
-                  }`}
+                  } ${selectedId === car.id ? "bg-series-1/10" : ""}`}
                 >
                   <td className="px-3 py-2">
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
@@ -370,6 +373,7 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
                         target="_blank"
                         rel="noreferrer"
                         title="Open the Dubizzle listing in a new tab"
+                        onClick={() => setSelectedId(car.id)}
                         className="font-medium text-text-primary hover:underline"
                       >
                         {car.year} {car.make} {car.model} ↗
