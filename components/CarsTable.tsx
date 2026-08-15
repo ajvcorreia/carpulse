@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Sparkline } from "@/components/Sparkline";
+import { SELECTED_STORAGE_KEY } from "@/components/OpenListingRedirect";
 import { formatPrice, latestDelta } from "@/lib/format";
 import type { CarWithPrices, PricePoint } from "@/lib/types";
 
@@ -201,6 +202,44 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
     } catch {
       // ignore
     }
+    try {
+      setSelectedId(localStorage.getItem(SELECTED_STORAGE_KEY));
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // The "which listing did I just open" marker is written by
+  // OpenListingRedirect running in the *new* tab, not this one. The
+  // `storage` event is how a browser tells other same-origin tabs that
+  // localStorage changed elsewhere — it deliberately never fires on the tab
+  // that made the change, which is exactly the split we want here.
+  // visibilitychange is a belt-and-suspenders re-check for when a tab was
+  // backgrounded (e.g. "Open in Background" on iOS) and the storage event
+  // was missed while this tab wasn't the active one.
+  useEffect(() => {
+    function syncFromStorage() {
+      try {
+        setSelectedId(localStorage.getItem(SELECTED_STORAGE_KEY));
+      } catch {
+        // ignore
+      }
+    }
+
+    function handleStorage(e: StorageEvent) {
+      if (e.key === SELECTED_STORAGE_KEY) setSelectedId(e.newValue);
+    }
+
+    function handleVisibility() {
+      if (document.visibilityState === "visible") syncFromStorage();
+    }
+
+    window.addEventListener("storage", handleStorage);
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
   }, []);
 
   function toggleSort(key: SortKey) {
@@ -362,15 +401,6 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
               {sortedRows.map(({ car, points, latest, delta }) => (
                 <tr
                   key={car.id}
-                  // Delegated to the whole row rather than just the small
-                  // "↗" link: more forgiving on mobile where a tap can
-                  // easily land a few pixels off, and it's the same
-                  // mousedown/touchstart-before-the-browser-acts trick so
-                  // it still catches middle-click, right-click -> "Open
-                  // link in new tab", and iOS long-press -> "Open in New
-                  // Tab" too.
-                  onMouseDown={() => setSelectedId(car.id)}
-                  onTouchStart={() => setSelectedId(car.id)}
                   className={`border-b border-border last:border-0 ${
                     car.is_removed ? "opacity-50 line-through" : ""
                   } ${selectedId === car.id ? "bg-series-1/10" : ""}`}
@@ -378,7 +408,7 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
                   <td className="px-3 py-2">
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                       <a
-                        href={car.url}
+                        href={`/car/${car.id}/open`}
                         target="_blank"
                         rel="noreferrer"
                         title="Open the Dubizzle listing in a new tab"
