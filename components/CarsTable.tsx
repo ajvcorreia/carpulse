@@ -373,6 +373,12 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
                         target="_blank"
                         rel="noreferrer"
                         title="Open the Dubizzle listing in a new tab"
+                        // onMouseDown, not just onClick: fires on any mouse
+                        // button before the browser acts on it, so it also
+                        // catches middle-click and right-click ->
+                        // "Open link in new tab" — neither of those fires a
+                        // React click event at all.
+                        onMouseDown={() => setSelectedId(car.id)}
                         onClick={() => setSelectedId(car.id)}
                         className="font-medium text-text-primary hover:underline"
                       >
