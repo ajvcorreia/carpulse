@@ -1,0 +1,1 @@
+-- No seed data: add tracked_searches rows via the app's /searches page.

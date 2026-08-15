@@ -1,0 +1,60 @@
+# For detailed configuration reference documentation, visit:
+# https://supabase.com/docs/guides/local-development/cli/config
+project_id = "dubbizlewatch"
+
+[api]
+enabled = true
+port = 54331
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54332
+shadow_port = 54330
+health_timeout = "2m"
+major_version = 17
+
+[db.pooler]
+enabled = false
+port = 54339
+pool_mode = "transaction"
+default_pool_size = 20
+max_client_conn = 100
+
+[db.migrations]
+enabled = true
+schema_paths = []
+
+[db.seed]
+enabled = true
+sql_paths = ["./seed.sql"]
+
+[realtime]
+enabled = false
+
+[studio]
+enabled = true
+port = 54333
+api_url = "http://127.0.0.1"
+
+[local_smtp]
+enabled = false
+port = 54334
+
+[storage]
+enabled = false
+
+[auth]
+# No login in this app — single user, access controlled by the VM being on
+# a private network rather than app-level auth. Disabled outright rather
+# than left running unused.
+enabled = false
+
+[edge_runtime]
+enabled = false
+
+[analytics]
+enabled = true
+port = 54337
+backend = "postgres"
