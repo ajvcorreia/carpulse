@@ -364,14 +364,29 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
                   }`}
                 >
                   <td className="px-3 py-2">
-                    <Link href={`/car/${car.id}`} className="font-medium text-text-primary hover:underline">
-                      {car.year} {car.make} {car.model}
-                    </Link>
-                    {car.is_removed ? (
-                      <span className="ml-2 rounded-full bg-critical/10 px-1.5 py-0.5 text-xs font-medium text-critical no-underline">
-                        Removed
-                      </span>
-                    ) : null}
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                      <a
+                        href={car.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        title="Open the Dubizzle listing in a new tab"
+                        className="font-medium text-text-primary hover:underline"
+                      >
+                        {car.year} {car.make} {car.model} ↗
+                      </a>
+                      <Link
+                        href={`/car/${car.id}`}
+                        title="View price history"
+                        className="text-xs text-text-secondary no-underline hover:text-series-1 hover:underline"
+                      >
+                        Details
+                      </Link>
+                      {car.is_removed ? (
+                        <span className="rounded-full bg-critical/10 px-1.5 py-0.5 text-xs font-medium text-critical no-underline">
+                          Removed
+                        </span>
+                      ) : null}
+                    </div>
                   </td>
                   <td className="px-3 py-2 text-text-secondary">{car.spec ?? "—"}</td>
                   <td className="px-3 py-2 text-text-secondary">{car.exterior_color ?? "—"}</td>
