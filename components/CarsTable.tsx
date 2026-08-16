@@ -1,15 +1,30 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Sparkline } from "@/components/Sparkline";
-import { SELECTED_COOKIE } from "@/components/OpenListingRedirect";
 import { formatPrice, latestDelta } from "@/lib/format";
 import type { CarWithPrices, PricePoint } from "@/lib/types";
 
-function readSelectedCookie(): string | null {
-  const match = document.cookie.match(new RegExp(`(?:^|; )${SELECTED_COOKIE}=([^;]*)`));
-  return match ? decodeURIComponent(match[1]) : null;
+// How long a "you just opened this one" highlight stays live. Derived from
+// the cars prop's last_opened_at (set server-side by markCarOpened) rather
+// than any client-side cross-tab storage — see OpenListingRedirect.
+const SELECTED_WINDOW_MS = 10 * 60 * 1000;
+
+function mostRecentlyOpenedId(cars: CarWithPrices[]): string | null {
+  const cutoff = Date.now() - SELECTED_WINDOW_MS;
+  let bestId: string | null = null;
+  let bestTime = -Infinity;
+  for (const car of cars) {
+    if (!car.last_opened_at) continue;
+    const t = new Date(car.last_opened_at).getTime();
+    if (t > cutoff && t > bestTime) {
+      bestTime = t;
+      bestId = car.id;
+    }
+  }
+  return bestId;
 }
 
 type SortKey = "car" | "year" | "spec" | "exterior_color" | "interior_color" | "km" | "ad_placed_at" | "price" | "change";
@@ -142,12 +157,14 @@ function FilterField({ label, children }: { label: string; children: React.React
 }
 
 export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
+  const router = useRouter();
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   // Which row's listing was last opened in a new tab — highlighted so it's
   // obvious which one you were looking at when you switch back to this tab.
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Derived from the cars prop (server data), not local/client storage.
+  const selectedId = useMemo(() => mostRecentlyOpenedId(cars), [cars]);
 
   const rows = useMemo<Row[]>(
     () =>
@@ -210,28 +227,28 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
     } catch {
       // ignore
     }
-    setSelectedId(readSelectedCookie());
   }, []);
 
-  // The "which listing did I just open" cookie is set by OpenListingRedirect
-  // running in the *new* tab, not this one — cookies have no native
-  // cross-tab change event (unlike localStorage's `storage` event), so poll
-  // it whenever this tab could plausibly have just been switched back to.
+  // "Which listing did I just open" is recorded server-side by
+  // OpenListingRedirect running in the *new* tab (see markCarOpened) — this
+  // tab only finds out by re-fetching. router.refresh() re-runs the server
+  // component tree for the current route, so `cars` comes back with an
+  // updated last_opened_at whenever this tab regains focus.
   useEffect(() => {
-    function sync() {
-      setSelectedId(readSelectedCookie());
+    function refresh() {
+      router.refresh();
     }
     function handleVisibility() {
-      if (document.visibilityState === "visible") sync();
+      if (document.visibilityState === "visible") refresh();
     }
 
-    window.addEventListener("focus", sync);
+    window.addEventListener("focus", refresh);
     document.addEventListener("visibilitychange", handleVisibility);
     return () => {
-      window.removeEventListener("focus", sync);
+      window.removeEventListener("focus", refresh);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, []);
+  }, [router]);
 
   function toggleSort(key: SortKey) {
     const nextDir: SortDir = sortKey === key ? (sortDir === "asc" ? "desc" : "asc") : "asc";

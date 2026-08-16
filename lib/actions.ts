@@ -182,6 +182,18 @@ export async function setCarRemoved(formData: FormData) {
   redirect(`/car/${carId}`);
 }
 
+// Called directly (not a form action) from OpenListingRedirect, running in
+// the *new* tab, right before it forwards to the real listing. Tracked in
+// the DB rather than client-side storage (cookie/localStorage) — at least
+// one mobile browser wasn't sharing either reliably across its own tabs,
+// while a plain server round-trip has no such ambiguity.
+export async function markCarOpened(carId: string) {
+  if (!carId) return;
+  const supabase = createClient();
+  await supabase.from("cars").update({ last_opened_at: new Date().toISOString() }).eq("id", carId);
+  revalidatePath("/");
+}
+
 export async function addPrice(_prevState: unknown, formData: FormData) {
   const carId = String(formData.get("car_id") ?? "");
   const price = parseNumber(formData.get("price"));

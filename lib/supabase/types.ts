@@ -43,6 +43,7 @@ export type Database = {
           interior_color: string | null
           is_removed: boolean
           km: number | null
+          last_opened_at: string | null
           make: string
           model: string
           spec: string | null
@@ -57,6 +58,7 @@ export type Database = {
           interior_color?: string | null
           is_removed?: boolean
           km?: number | null
+          last_opened_at?: string | null
           make: string
           model: string
           spec?: string | null
@@ -71,6 +73,7 @@ export type Database = {
           interior_color?: string | null
           is_removed?: boolean
           km?: number | null
+          last_opened_at?: string | null
           make?: string
           model?: string
           spec?: string | null

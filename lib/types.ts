@@ -11,6 +11,7 @@ export type Car = {
   ad_placed_at: string | null;
   created_at: string;
   is_removed: boolean;
+  last_opened_at: string | null;
 };
 
 export type PricePoint = {
