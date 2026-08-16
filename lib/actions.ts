@@ -186,6 +186,27 @@ export async function setCarRemoved(formData: FormData) {
   redirect(`/car/${carId}`);
 }
 
+// Separate from is_removed: is_removed means the ad came down on Dubizzle;
+// this is for any other reason to set a car aside (wrong spec entered,
+// duplicate, etc.), with an optional free-text note.
+export async function setCarStruckOut(formData: FormData) {
+  const carId = String(formData.get("car_id") ?? "");
+  const struckOut = formData.get("struck_out") === "true";
+  const reason = String(formData.get("reason") ?? "").trim() || null;
+
+  if (!carId) return;
+
+  const supabase = createClient();
+  await supabase
+    .from("cars")
+    .update({ is_struck_out: struckOut, strike_out_reason: struckOut ? reason : null })
+    .eq("id", carId);
+
+  revalidatePath("/");
+  revalidatePath(`/car/${carId}`);
+  redirect(`/car/${carId}`);
+}
+
 // Called directly (not a form action) from OpenListingRedirect, running in
 // the *new* tab, right before it forwards to the real listing. Tracked in
 // the DB rather than client-side storage (cookie/localStorage) — at least
@@ -305,6 +326,9 @@ const importCarSchema = z.object({
   ad_placed_at: z.string().nullable().optional(),
   created_at: z.string().optional(),
   is_favorite: z.boolean().optional(),
+  is_removed: z.boolean().optional(),
+  is_struck_out: z.boolean().optional(),
+  strike_out_reason: z.string().nullable().optional(),
   price_history: z.array(importPriceSchema).default([]),
 });
 
@@ -358,6 +382,9 @@ export async function importData(_prevState: unknown, formData: FormData) {
           interior_color: entry.interior_color ?? null,
           ad_placed_at: entry.ad_placed_at ?? null,
           is_favorite: entry.is_favorite ?? false,
+          is_removed: entry.is_removed ?? false,
+          is_struck_out: entry.is_struck_out ?? false,
+          strike_out_reason: entry.is_struck_out ? entry.strike_out_reason ?? null : null,
           ...(entry.created_at ? { created_at: entry.created_at } : {}),
         })
         .select("id")

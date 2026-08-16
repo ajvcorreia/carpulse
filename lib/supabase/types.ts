@@ -44,11 +44,13 @@ export type Database = {
           interior_color: string | null
           is_favorite: boolean
           is_removed: boolean
+          is_struck_out: boolean
           km: number | null
           last_opened_at: string | null
           make: string
           model: string
           spec: string | null
+          strike_out_reason: string | null
           url: string
           year: number
         }
@@ -61,11 +63,13 @@ export type Database = {
           interior_color?: string | null
           is_favorite?: boolean
           is_removed?: boolean
+          is_struck_out?: boolean
           km?: number | null
           last_opened_at?: string | null
           make: string
           model: string
           spec?: string | null
+          strike_out_reason?: string | null
           url: string
           year: number
         }
@@ -78,11 +82,13 @@ export type Database = {
           interior_color?: string | null
           is_favorite?: boolean
           is_removed?: boolean
+          is_struck_out?: boolean
           km?: number | null
           last_opened_at?: string | null
           make?: string
           model?: string
           spec?: string | null
+          strike_out_reason?: string | null
           url?: string
           year?: number
         }

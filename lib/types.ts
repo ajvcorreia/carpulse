@@ -13,6 +13,8 @@ export type Car = {
   created_at: string;
   is_removed: boolean;
   is_favorite: boolean;
+  is_struck_out: boolean;
+  strike_out_reason: string | null;
   last_opened_at: string | null;
 };
 

@@ -19,6 +19,9 @@ export async function GET() {
       ad_placed_at: c.ad_placed_at,
       created_at: c.created_at,
       is_favorite: c.is_favorite,
+      is_removed: c.is_removed,
+      is_struck_out: c.is_struck_out,
+      strike_out_reason: c.strike_out_reason,
       price_history: c.price_history.map((p) => ({
         price: p.price,
         currency: p.currency,

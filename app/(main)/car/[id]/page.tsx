@@ -5,7 +5,7 @@ import { PriceChart } from "@/components/PriceChart";
 import { AddPriceForm } from "@/components/AddPriceForm";
 import { PriceHistoryList } from "@/components/PriceHistoryList";
 import { FavoriteToggle } from "@/components/FavoriteToggle";
-import { setCarRemoved } from "@/lib/actions";
+import { setCarRemoved, setCarStruckOut } from "@/lib/actions";
 import { formatPrice, latestDelta } from "@/lib/format";
 
 export default async function CarDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -47,22 +47,64 @@ export default async function CarDetailPage({ params }: { params: Promise<{ id: 
               Removed from Dubizzle
             </span>
           ) : null}
+          {car.is_struck_out ? (
+            <span className="rounded-full bg-critical/10 px-2 py-0.5 text-xs font-medium text-critical">
+              Struck out{car.strike_out_reason ? `: ${car.strike_out_reason}` : ""}
+            </span>
+          ) : null}
         </div>
         <a href={car.url} target="_blank" rel="noreferrer" className="break-all text-sm text-series-1 hover:underline">
           {car.url}
         </a>
       </div>
 
-      <form action={setCarRemoved}>
-        <input type="hidden" name="car_id" value={car.id} />
-        <input type="hidden" name="removed" value={car.is_removed ? "false" : "true"} />
-        <button
-          type="submit"
-          className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text-secondary hover:border-series-1 hover:text-text-primary"
-        >
-          {car.is_removed ? "Mark as active again" : "Mark as removed from Dubizzle"}
-        </button>
-      </form>
+      <div className="flex flex-wrap gap-2">
+        <form action={setCarRemoved}>
+          <input type="hidden" name="car_id" value={car.id} />
+          <input type="hidden" name="removed" value={car.is_removed ? "false" : "true"} />
+          <button
+            type="submit"
+            className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text-secondary hover:border-series-1 hover:text-text-primary"
+          >
+            {car.is_removed ? "Mark as active again" : "Mark as removed from Dubizzle"}
+          </button>
+        </form>
+
+        {car.is_struck_out ? (
+          <form action={setCarStruckOut}>
+            <input type="hidden" name="car_id" value={car.id} />
+            <input type="hidden" name="struck_out" value="false" />
+            <button
+              type="submit"
+              className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text-secondary hover:border-series-1 hover:text-text-primary"
+            >
+              Remove strike-out
+            </button>
+          </form>
+        ) : (
+          <form action={setCarStruckOut} className="flex flex-wrap items-end gap-2">
+            <input type="hidden" name="car_id" value={car.id} />
+            <input type="hidden" name="struck_out" value="true" />
+            <div className="space-y-1">
+              <label htmlFor="reason" className="text-xs text-text-secondary">
+                Strike-out reason (optional)
+              </label>
+              <input
+                id="reason"
+                name="reason"
+                placeholder="e.g. incorrect spec"
+                className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm outline-none focus:border-series-1"
+              />
+            </div>
+            <button
+              type="submit"
+              className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text-secondary hover:border-series-1 hover:text-text-primary"
+            >
+              Strike out this car
+            </button>
+          </form>
+        )}
+      </div>
 
       <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-4">
         <div>

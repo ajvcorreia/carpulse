@@ -59,6 +59,7 @@ type Filters = {
   priceMin: string;
   priceMax: string;
   hideRemoved: boolean;
+  hideStruckOut: boolean;
 };
 
 const DEFAULT_FILTERS: Filters = {
@@ -71,6 +72,7 @@ const DEFAULT_FILTERS: Filters = {
   priceMin: "",
   priceMax: "",
   hideRemoved: true,
+  hideStruckOut: true,
 };
 
 const FILTERS_STORAGE_KEY = "dubbizlewatch:filters";
@@ -136,6 +138,7 @@ function matchesFilters(row: Row, filters: Filters): boolean {
   const { car, latest } = row;
 
   if (filters.hideRemoved && car.is_removed) return false;
+  if (filters.hideStruckOut && car.is_struck_out) return false;
 
   if (filters.search.trim()) {
     const needle = filters.search.trim().toLowerCase();
@@ -414,6 +417,14 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
           />
           Hide removed ads
         </label>
+        <label className="flex items-center gap-2 self-end pb-1.5 text-sm text-text-secondary">
+          <input
+            type="checkbox"
+            checked={filters.hideStruckOut}
+            onChange={(e) => setFilter("hideStruckOut", e.target.checked)}
+          />
+          Hide struck out cars
+        </label>
         {hasActiveFilters ? (
           <button type="button" onClick={resetFilters} className="text-sm text-series-1 hover:underline">
             Reset filters
@@ -456,7 +467,7 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
                 <tr
                   key={car.id}
                   className={`border-b border-border last:border-0 ${
-                    car.is_removed ? "opacity-50 line-through" : ""
+                    car.is_removed || car.is_struck_out ? "opacity-50 line-through" : ""
                   } ${selectedId === car.id ? "bg-highlight" : ""}`}
                 >
                   <td className="px-3 py-2">
@@ -492,6 +503,14 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
                       {car.is_removed ? (
                         <span className="rounded-full bg-critical/10 px-1.5 py-0.5 text-xs font-medium text-critical no-underline">
                           Removed
+                        </span>
+                      ) : null}
+                      {car.is_struck_out ? (
+                        <span
+                          title={car.strike_out_reason ?? undefined}
+                          className="rounded-full bg-critical/10 px-1.5 py-0.5 text-xs font-medium text-critical no-underline"
+                        >
+                          Struck out
                         </span>
                       ) : null}
                     </div>
