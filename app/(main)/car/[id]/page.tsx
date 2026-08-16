@@ -72,6 +72,10 @@ export default async function CarDetailPage({ params }: { params: Promise<{ id: 
           <dd className="tabular-nums">{car.km != null ? car.km.toLocaleString() : "—"}</dd>
         </div>
         <div>
+          <dt className="text-text-secondary">Cylinders</dt>
+          <dd className="tabular-nums">{car.cylinders ?? "—"}</dd>
+        </div>
+        <div>
           <dt className="text-text-secondary">Exterior color</dt>
           <dd>{car.exterior_color ?? "—"}</dd>
         </div>

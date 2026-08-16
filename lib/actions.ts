@@ -79,6 +79,7 @@ export async function createCar(_prevState: unknown, formData: FormData) {
   const model = String(formData.get("model") ?? "").trim();
   const year = parseNumber(formData.get("year"));
   const km = parseNumber(formData.get("km"));
+  const cylinders = parseNumber(formData.get("cylinders"));
   const spec = String(formData.get("spec") ?? "").trim() || null;
   const exteriorColor = String(formData.get("exterior_color") ?? "").trim() || null;
   const interiorColor = String(formData.get("interior_color") ?? "").trim() || null;
@@ -100,6 +101,7 @@ export async function createCar(_prevState: unknown, formData: FormData) {
       model,
       year,
       km,
+      cylinders,
       spec,
       exterior_color: exteriorColor,
       interior_color: interiorColor,
@@ -131,6 +133,7 @@ export async function updateCar(_prevState: unknown, formData: FormData) {
   const model = String(formData.get("model") ?? "").trim();
   const year = parseNumber(formData.get("year"));
   const km = parseNumber(formData.get("km"));
+  const cylinders = parseNumber(formData.get("cylinders"));
   const spec = String(formData.get("spec") ?? "").trim() || null;
   const exteriorColor = String(formData.get("exterior_color") ?? "").trim() || null;
   const interiorColor = String(formData.get("interior_color") ?? "").trim() || null;
@@ -150,6 +153,7 @@ export async function updateCar(_prevState: unknown, formData: FormData) {
       model,
       year,
       km,
+      cylinders,
       spec,
       exterior_color: exteriorColor,
       interior_color: interiorColor,
@@ -282,6 +286,7 @@ const importCarSchema = z.object({
   model: z.string().min(1),
   year: z.number(),
   km: z.number().nullable().optional(),
+  cylinders: z.number().nullable().optional(),
   spec: z.string().nullable().optional(),
   exterior_color: z.string().nullable().optional(),
   interior_color: z.string().nullable().optional(),
@@ -334,6 +339,7 @@ export async function importData(_prevState: unknown, formData: FormData) {
           model: entry.model,
           year: entry.year,
           km: entry.km ?? null,
+          cylinders: entry.cylinders ?? null,
           spec: entry.spec ?? null,
           exterior_color: entry.exterior_color ?? null,
           interior_color: entry.interior_color ?? null,

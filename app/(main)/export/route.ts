@@ -12,6 +12,7 @@ export async function GET() {
       model: c.model,
       year: c.year,
       km: c.km,
+      cylinders: c.cylinders,
       spec: c.spec,
       exterior_color: c.exterior_color,
       interior_color: c.interior_color,

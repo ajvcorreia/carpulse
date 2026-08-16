@@ -10,11 +10,17 @@ export default async function DashboardPage() {
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-semibold">Tracked cars</h1>
-          <div className="flex gap-4 text-sm">
-            <a href="/export" className="text-series-1 hover:underline">
+          <div className="flex gap-2">
+            <a
+              href="/export"
+              className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text-secondary hover:border-series-1 hover:text-text-primary"
+            >
               Export
             </a>
-            <Link href="/import" className="text-series-1 hover:underline">
+            <Link
+              href="/import"
+              className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text-secondary hover:border-series-1 hover:text-text-primary"
+            >
               Import
             </Link>
           </div>

@@ -38,6 +38,7 @@ export type Database = {
         Row: {
           ad_placed_at: string | null
           created_at: string
+          cylinders: number | null
           exterior_color: string | null
           id: string
           interior_color: string | null
@@ -53,6 +54,7 @@ export type Database = {
         Insert: {
           ad_placed_at?: string | null
           created_at?: string
+          cylinders?: number | null
           exterior_color?: string | null
           id?: string
           interior_color?: string | null
@@ -68,6 +70,7 @@ export type Database = {
         Update: {
           ad_placed_at?: string | null
           created_at?: string
+          cylinders?: number | null
           exterior_color?: string | null
           id?: string
           interior_color?: string | null

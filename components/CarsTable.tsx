@@ -27,7 +27,17 @@ function mostRecentlyOpenedId(cars: CarWithPrices[]): string | null {
   return bestId;
 }
 
-type SortKey = "car" | "year" | "spec" | "exterior_color" | "interior_color" | "km" | "ad_placed_at" | "price" | "change";
+type SortKey =
+  | "car"
+  | "year"
+  | "spec"
+  | "exterior_color"
+  | "interior_color"
+  | "km"
+  | "cylinders"
+  | "ad_placed_at"
+  | "price"
+  | "change";
 type SortDir = "asc" | "desc";
 
 type Row = {
@@ -103,6 +113,8 @@ function compareRows(a: Row, b: Row, key: SortKey): number {
       return compareNullable(a.car.interior_color, b.car.interior_color, (x, y) => x.localeCompare(y));
     case "km":
       return compareNullable(a.car.km, b.car.km, (x, y) => x - y);
+    case "cylinders":
+      return compareNullable(a.car.cylinders, b.car.cylinders, (x, y) => x - y);
     case "ad_placed_at":
       return compareNullable(a.car.ad_placed_at, b.car.ad_placed_at, (x, y) => x.localeCompare(y));
     case "price":
@@ -144,6 +156,7 @@ const HEADERS: { key: SortKey; label: string }[] = [
   { key: "exterior_color", label: "Ext. color" },
   { key: "interior_color", label: "Int. color" },
   { key: "km", label: "KM" },
+  { key: "cylinders", label: "Cyl." },
   { key: "ad_placed_at", label: "Ad placed" },
   { key: "change", label: "Change" },
 ];
@@ -477,6 +490,7 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
                   <td className="tabular-nums px-3 py-2 text-text-secondary">
                     {car.km != null ? car.km.toLocaleString() : "—"}
                   </td>
+                  <td className="tabular-nums px-3 py-2 text-text-secondary">{car.cylinders ?? "—"}</td>
                   <td className="px-3 py-2 text-text-secondary">{car.ad_placed_at ?? "—"}</td>
                   <td className="tabular-nums px-3 py-2">
                     {delta == null ? (

@@ -72,6 +72,17 @@ export function EditCarForm({ car }: { car: Car }) {
       <Field id="km" label="KM">
         <input id="km" name="km" type="number" min={0} defaultValue={car.km ?? ""} className={inputClass} />
       </Field>
+      <Field id="cylinders" label="Cylinders">
+        <input
+          id="cylinders"
+          name="cylinders"
+          type="number"
+          min={1}
+          max={16}
+          defaultValue={car.cylinders ?? ""}
+          className={inputClass}
+        />
+      </Field>
       <Field id="spec" label="Spec">
         <input id="spec" name="spec" defaultValue={car.spec ?? ""} className={inputClass} />
       </Field>

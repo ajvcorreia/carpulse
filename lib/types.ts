@@ -5,6 +5,7 @@ export type Car = {
   model: string;
   year: number;
   km: number | null;
+  cylinders: number | null;
   spec: string | null;
   exterior_color: string | null;
   interior_color: string | null;

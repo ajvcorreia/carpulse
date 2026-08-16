@@ -79,6 +79,9 @@ export function NewCarForm({ url }: { url: string }) {
       <Field id="km" label="KM">
         <input id="km" name="km" type="number" min={0} className={inputClass} placeholder="15000" />
       </Field>
+      <Field id="cylinders" label="Cylinders">
+        <input id="cylinders" name="cylinders" type="number" min={1} max={16} className={inputClass} placeholder="6" />
+      </Field>
       <Field id="spec" label="Spec">
         <input id="spec" name="spec" className={inputClass} placeholder="GCC Specs" />
       </Field>
