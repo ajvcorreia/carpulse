@@ -472,7 +472,7 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
                     <FavoriteToggle
                       carId={car.id}
                       isFavorite={car.is_favorite}
-                      className="text-lg leading-none text-series-1 hover:opacity-70 disabled:opacity-60"
+                      className="text-2xl leading-none text-series-1 hover:opacity-70 disabled:opacity-60"
                     />
                   </td>
                   <td className="px-3 py-2">
