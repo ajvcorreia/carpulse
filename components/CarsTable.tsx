@@ -113,8 +113,8 @@ function matchesFilters(row: Row, filters: Filters): boolean {
 
 const HEADERS: { key: SortKey; label: string }[] = [
   { key: "car", label: "Car" },
-  { key: "year", label: "Year" },
   { key: "price", label: "Latest price" },
+  { key: "year", label: "Year" },
   { key: "spec", label: "Spec" },
   { key: "exterior_color", label: "Ext. color" },
   { key: "interior_color", label: "Int. color" },
@@ -344,6 +344,7 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border text-left text-text-secondary">
+                <th className="px-3 py-2 font-medium">Details</th>
                 {HEADERS.map((h) => (
                   <th key={h.key} className="px-3 py-2 font-medium">
                     <button
@@ -379,7 +380,16 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
                   } ${selectedId === car.id ? "bg-highlight" : ""}`}
                 >
                   <td className="px-3 py-2">
-                    <div className="flex flex-col gap-0.5">
+                    <Link
+                      href={`/car/${car.id}`}
+                      title="View price history"
+                      className="text-xs text-text-secondary no-underline hover:text-series-1 hover:underline"
+                    >
+                      Details
+                    </Link>
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                       <a
                         href={car.url}
                         target="_blank"
@@ -389,26 +399,17 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
                       >
                         {car.make} {car.model} ↗
                       </a>
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                        <Link
-                          href={`/car/${car.id}`}
-                          title="View price history"
-                          className="text-xs text-text-secondary no-underline hover:text-series-1 hover:underline"
-                        >
-                          Details
-                        </Link>
-                        {car.is_removed ? (
-                          <span className="rounded-full bg-critical/10 px-1.5 py-0.5 text-xs font-medium text-critical no-underline">
-                            Removed
-                          </span>
-                        ) : null}
-                      </div>
+                      {car.is_removed ? (
+                        <span className="rounded-full bg-critical/10 px-1.5 py-0.5 text-xs font-medium text-critical no-underline">
+                          Removed
+                        </span>
+                      ) : null}
                     </div>
                   </td>
-                  <td className="tabular-nums px-3 py-2 text-text-secondary">{car.year}</td>
                   <td className="tabular-nums px-3 py-2 font-medium">
                     {latest ? formatPrice(latest.price, latest.currency) : "—"}
                   </td>
+                  <td className="tabular-nums px-3 py-2 text-text-secondary">{car.year}</td>
                   <td className="px-3 py-2 text-text-secondary">{car.spec ?? "—"}</td>
                   <td className="px-3 py-2 text-text-secondary">{car.exterior_color ?? "—"}</td>
                   <td className="px-3 py-2 text-text-secondary">{car.interior_color ?? "—"}</td>
