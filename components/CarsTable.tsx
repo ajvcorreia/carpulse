@@ -6,7 +6,7 @@ import { Sparkline } from "@/components/Sparkline";
 import { formatPrice, latestDelta } from "@/lib/format";
 import type { CarWithPrices, PricePoint } from "@/lib/types";
 
-type SortKey = "car" | "spec" | "exterior_color" | "interior_color" | "km" | "ad_placed_at" | "price" | "change";
+type SortKey = "car" | "year" | "spec" | "exterior_color" | "interior_color" | "km" | "ad_placed_at" | "price" | "change";
 type SortDir = "asc" | "desc";
 
 type Row = {
@@ -70,6 +70,8 @@ function compareRows(a: Row, b: Row, key: SortKey): number {
       return `${a.car.make} ${a.car.model} ${a.car.year}`.localeCompare(
         `${b.car.make} ${b.car.model} ${b.car.year}`
       );
+    case "year":
+      return a.car.year - b.car.year;
     case "spec":
       return compareNullable(a.car.spec, b.car.spec, (x, y) => x.localeCompare(y));
     case "exterior_color":
@@ -111,6 +113,7 @@ function matchesFilters(row: Row, filters: Filters): boolean {
 
 const HEADERS: { key: SortKey; label: string }[] = [
   { key: "car", label: "Car" },
+  { key: "year", label: "Year" },
   { key: "price", label: "Latest price" },
   { key: "spec", label: "Spec" },
   { key: "exterior_color", label: "Ext. color" },
@@ -384,7 +387,7 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
                         title="Open the Dubizzle listing in a new tab"
                         className="font-medium text-text-primary hover:underline"
                       >
-                        {car.year} {car.make} {car.model} ↗
+                        {car.make} {car.model} ↗
                       </a>
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                         <Link
@@ -402,6 +405,7 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
                       </div>
                     </div>
                   </td>
+                  <td className="tabular-nums px-3 py-2 text-text-secondary">{car.year}</td>
                   <td className="tabular-nums px-3 py-2 font-medium">
                     {latest ? formatPrice(latest.price, latest.currency) : "—"}
                   </td>
