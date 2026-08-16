@@ -338,7 +338,7 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
         <p className="text-sm text-text-muted">No cars match these filters.</p>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="w-full min-w-[960px] text-sm">
+          <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border text-left text-text-secondary">
                 {HEADERS.map((h) => (
@@ -376,7 +376,7 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
                   } ${selectedId === car.id ? "bg-highlight" : ""}`}
                 >
                   <td className="px-3 py-2">
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    <div className="flex flex-col gap-0.5">
                       <a
                         href={car.url}
                         target="_blank"
@@ -386,18 +386,20 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
                       >
                         {car.year} {car.make} {car.model} ↗
                       </a>
-                      <Link
-                        href={`/car/${car.id}`}
-                        title="View price history"
-                        className="text-xs text-text-secondary no-underline hover:text-series-1 hover:underline"
-                      >
-                        Details
-                      </Link>
-                      {car.is_removed ? (
-                        <span className="rounded-full bg-critical/10 px-1.5 py-0.5 text-xs font-medium text-critical no-underline">
-                          Removed
-                        </span>
-                      ) : null}
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                        <Link
+                          href={`/car/${car.id}`}
+                          title="View price history"
+                          className="text-xs text-text-secondary no-underline hover:text-series-1 hover:underline"
+                        >
+                          Details
+                        </Link>
+                        {car.is_removed ? (
+                          <span className="rounded-full bg-critical/10 px-1.5 py-0.5 text-xs font-medium text-critical no-underline">
+                            Removed
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
                   </td>
                   <td className="tabular-nums px-3 py-2 font-medium">
