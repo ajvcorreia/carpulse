@@ -46,9 +46,10 @@ type Filters = {
   kmMax: string;
   priceMin: string;
   priceMax: string;
+  hideRemoved: boolean;
 };
 
-const EMPTY_FILTERS: Filters = {
+const DEFAULT_FILTERS: Filters = {
   search: "",
   spec: "",
   exteriorColor: "",
@@ -57,6 +58,7 @@ const EMPTY_FILTERS: Filters = {
   kmMax: "",
   priceMin: "",
   priceMax: "",
+  hideRemoved: true,
 };
 
 const FILTERS_STORAGE_KEY = "dubbizlewatch:filters";
@@ -113,6 +115,8 @@ function compareRows(a: Row, b: Row, key: SortKey): number {
 function matchesFilters(row: Row, filters: Filters): boolean {
   const { car, latest } = row;
 
+  if (filters.hideRemoved && car.is_removed) return false;
+
   if (filters.search.trim()) {
     const needle = filters.search.trim().toLowerCase();
     const haystack = `${car.make} ${car.model} ${car.year}`.toLowerCase();
@@ -160,7 +164,7 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
   const router = useRouter();
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>("asc");
-  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
+  const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   // Which row's listing was last opened — highlighted so it's obvious which
   // one you were looking at when you come back. Derived from the cars prop
   // (server data), not local/client storage.
@@ -212,7 +216,7 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
       const rawFilters = localStorage.getItem(FILTERS_STORAGE_KEY);
       if (rawFilters) {
         // eslint-disable-next-line react-hooks/set-state-in-effect
-        setFilters({ ...EMPTY_FILTERS, ...JSON.parse(rawFilters) });
+        setFilters({ ...DEFAULT_FILTERS, ...JSON.parse(rawFilters) });
       }
     } catch {
       // ignore malformed/unavailable storage
@@ -264,11 +268,11 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
   }
 
   function resetFilters() {
-    setFilters(EMPTY_FILTERS);
-    saveFilters(EMPTY_FILTERS);
+    setFilters(DEFAULT_FILTERS);
+    saveFilters(DEFAULT_FILTERS);
   }
 
-  const hasActiveFilters = Object.values(filters).some((v) => v !== "");
+  const hasActiveFilters = JSON.stringify(filters) !== JSON.stringify(DEFAULT_FILTERS);
   const hasActiveSort = sortKey !== null;
 
   if (cars.length === 0) {
@@ -361,6 +365,14 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
             className={`${selectClass} w-28`}
           />
         </FilterField>
+        <label className="flex items-center gap-2 self-end pb-1.5 text-sm text-text-secondary">
+          <input
+            type="checkbox"
+            checked={filters.hideRemoved}
+            onChange={(e) => setFilter("hideRemoved", e.target.checked)}
+          />
+          Hide removed ads
+        </label>
         {hasActiveFilters ? (
           <button type="button" onClick={resetFilters} className="text-sm text-series-1 hover:underline">
             Reset filters
