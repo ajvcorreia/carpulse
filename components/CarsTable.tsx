@@ -373,7 +373,7 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
                   onTouchStart={() => setSelectedId(car.id)}
                   className={`border-b border-border last:border-0 ${
                     car.is_removed ? "opacity-50 line-through" : ""
-                  } ${selectedId === car.id ? "bg-series-1/10" : ""}`}
+                  } ${selectedId === car.id ? "bg-highlight" : ""}`}
                 >
                   <td className="px-3 py-2">
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">

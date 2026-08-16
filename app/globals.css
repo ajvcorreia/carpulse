@@ -12,6 +12,7 @@
   --color-series-1: var(--series-1);
   --color-good: var(--good);
   --color-critical: var(--critical);
+  --color-highlight: var(--highlight);
   --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
@@ -28,6 +29,10 @@
   --series-1: #2a78d6;
   --good: #006300;
   --critical: #d03b3b;
+  /* Solid, not translucent — a color-mix()-based opacity utility
+     (bg-series-1/10) turned out unreliable, so this is a plain hex the
+     browser can't get wrong. */
+  --highlight: #fef3c7;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -44,6 +49,7 @@
     --series-1: #3987e5;
     --good: #0ca30c;
     --critical: #e66767;
+    --highlight: #4a3510;
   }
 }
 
