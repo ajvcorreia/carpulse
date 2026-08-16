@@ -111,12 +111,12 @@ function matchesFilters(row: Row, filters: Filters): boolean {
 
 const HEADERS: { key: SortKey; label: string }[] = [
   { key: "car", label: "Car" },
+  { key: "price", label: "Latest price" },
   { key: "spec", label: "Spec" },
   { key: "exterior_color", label: "Ext. color" },
   { key: "interior_color", label: "Int. color" },
   { key: "km", label: "KM" },
   { key: "ad_placed_at", label: "Ad placed" },
-  { key: "price", label: "Latest price" },
   { key: "change", label: "Change" },
 ];
 
@@ -400,6 +400,9 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
                       ) : null}
                     </div>
                   </td>
+                  <td className="tabular-nums px-3 py-2 font-medium">
+                    {latest ? formatPrice(latest.price, latest.currency) : "—"}
+                  </td>
                   <td className="px-3 py-2 text-text-secondary">{car.spec ?? "—"}</td>
                   <td className="px-3 py-2 text-text-secondary">{car.exterior_color ?? "—"}</td>
                   <td className="px-3 py-2 text-text-secondary">{car.interior_color ?? "—"}</td>
@@ -407,9 +410,6 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
                     {car.km != null ? car.km.toLocaleString() : "—"}
                   </td>
                   <td className="px-3 py-2 text-text-secondary">{car.ad_placed_at ?? "—"}</td>
-                  <td className="tabular-nums px-3 py-2 font-medium">
-                    {latest ? formatPrice(latest.price, latest.currency) : "—"}
-                  </td>
                   <td className="tabular-nums px-3 py-2">
                     {delta == null ? (
                       <span className="text-text-muted">—</span>
