@@ -170,6 +170,25 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
   // (server data), not local/client storage.
   const selectedId = useMemo(() => mostRecentlyOpenedId(cars), [cars]);
 
+  // Desktop opens the listing in a new tab; mobile navigates in place. On
+  // iOS, target="_blank" hands dubizzle.com links off to the native app
+  // instead of opening a browser tab at all (Universal Links) — desktop has
+  // no such app to hand off to, so a new tab there is unambiguous and more
+  // convenient (keep the dashboard open while comparing listings). Starts
+  // false to match the server-rendered HTML, then set on mount — pointer
+  // type isn't knowable server-side.
+  const [isDesktop, setIsDesktop] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(pointer: fine)");
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setIsDesktop(mq.matches);
+    function handleChange(e: MediaQueryListEvent) {
+      setIsDesktop(e.matches);
+    }
+    mq.addEventListener("change", handleChange);
+    return () => mq.removeEventListener("change", handleChange);
+  }, []);
+
   const rows = useMemo<Row[]>(
     () =>
       cars.map((car) => {
@@ -431,12 +450,15 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                       <a
                         href={car.url}
-                        title="Open the Dubizzle listing"
+                        target={isDesktop ? "_blank" : undefined}
+                        rel={isDesktop ? "noreferrer" : undefined}
+                        title={isDesktop ? "Open the Dubizzle listing in a new tab" : "Open the Dubizzle listing"}
                         onMouseDown={() => markOpened(car.id)}
                         onTouchStart={() => markOpened(car.id)}
                         className="font-medium text-text-primary hover:underline"
                       >
                         {car.make} {car.model}
+                        {isDesktop ? " ↗" : null}
                       </a>
                       {car.is_removed ? (
                         <span className="rounded-full bg-critical/10 px-1.5 py-0.5 text-xs font-medium text-critical no-underline">
