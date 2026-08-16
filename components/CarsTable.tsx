@@ -3,8 +3,14 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Sparkline } from "@/components/Sparkline";
+import { SELECTED_COOKIE } from "@/components/OpenListingRedirect";
 import { formatPrice, latestDelta } from "@/lib/format";
 import type { CarWithPrices, PricePoint } from "@/lib/types";
+
+function readSelectedCookie(): string | null {
+  const match = document.cookie.match(new RegExp(`(?:^|; )${SELECTED_COOKIE}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : null;
+}
 
 type SortKey = "car" | "year" | "spec" | "exterior_color" | "interior_color" | "km" | "ad_placed_at" | "price" | "change";
 type SortDir = "asc" | "desc";
@@ -204,6 +210,27 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
     } catch {
       // ignore
     }
+    setSelectedId(readSelectedCookie());
+  }, []);
+
+  // The "which listing did I just open" cookie is set by OpenListingRedirect
+  // running in the *new* tab, not this one — cookies have no native
+  // cross-tab change event (unlike localStorage's `storage` event), so poll
+  // it whenever this tab could plausibly have just been switched back to.
+  useEffect(() => {
+    function sync() {
+      setSelectedId(readSelectedCookie());
+    }
+    function handleVisibility() {
+      if (document.visibilityState === "visible") sync();
+    }
+
+    window.addEventListener("focus", sync);
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      window.removeEventListener("focus", sync);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
   }, []);
 
   function toggleSort(key: SortKey) {
@@ -366,15 +393,6 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
               {sortedRows.map(({ car, points, latest, delta }) => (
                 <tr
                   key={car.id}
-                  // Delegated to the whole row rather than just the small
-                  // "↗" link: more forgiving on mobile where a tap can
-                  // easily land a few pixels off, and it's the same
-                  // mousedown/touchstart-before-the-browser-acts trick so
-                  // it still catches middle-click, right-click -> "Open
-                  // link in new tab", and iOS long-press -> "Open in New
-                  // Tab" too.
-                  onMouseDown={() => setSelectedId(car.id)}
-                  onTouchStart={() => setSelectedId(car.id)}
                   className={`border-b border-border last:border-0 ${
                     car.is_removed ? "opacity-50 line-through" : ""
                   } ${selectedId === car.id ? "bg-highlight" : ""}`}
@@ -391,7 +409,7 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
                   <td className="px-3 py-2">
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                       <a
-                        href={car.url}
+                        href={`/car/${car.id}/open`}
                         target="_blank"
                         rel="noreferrer"
                         title="Open the Dubizzle listing in a new tab"

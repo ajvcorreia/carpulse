@@ -30,6 +30,14 @@ export async function getCarWithPrices(id: string): Promise<CarWithPrices | null
   return data as unknown as CarWithPrices | null;
 }
 
+export async function getCarUrl(id: string): Promise<string | null> {
+  const supabase = createClient();
+  const { data, error } = await supabase.from("cars").select("url").eq("id", id).maybeSingle();
+
+  if (error) throw error;
+  return data?.url ?? null;
+}
+
 export async function getCarByUrl(url: string): Promise<CarWithPrices | null> {
   const supabase = createClient();
   const { data, error } = await supabase
