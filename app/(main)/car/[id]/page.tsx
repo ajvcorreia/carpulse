@@ -4,6 +4,7 @@ import { getCarWithPrices } from "@/lib/data";
 import { PriceChart } from "@/components/PriceChart";
 import { AddPriceForm } from "@/components/AddPriceForm";
 import { PriceHistoryList } from "@/components/PriceHistoryList";
+import { FavoriteToggle } from "@/components/FavoriteToggle";
 import { setCarRemoved } from "@/lib/actions";
 import { formatPrice, latestDelta } from "@/lib/format";
 
@@ -40,6 +41,7 @@ export default async function CarDetailPage({ params }: { params: Promise<{ id: 
           <h1 className="text-xl font-semibold">
             {car.year} {car.make} {car.model}
           </h1>
+          <FavoriteToggle carId={car.id} isFavorite={car.is_favorite} className="text-xl leading-none text-series-1 hover:opacity-70" />
           {car.is_removed ? (
             <span className="rounded-full bg-critical/10 px-2 py-0.5 text-xs font-medium text-critical">
               Removed from Dubizzle

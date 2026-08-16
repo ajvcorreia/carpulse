@@ -18,6 +18,7 @@ export async function GET() {
       interior_color: c.interior_color,
       ad_placed_at: c.ad_placed_at,
       created_at: c.created_at,
+      is_favorite: c.is_favorite,
       price_history: c.price_history.map((p) => ({
         price: p.price,
         currency: p.currency,

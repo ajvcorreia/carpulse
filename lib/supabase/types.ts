@@ -42,6 +42,7 @@ export type Database = {
           exterior_color: string | null
           id: string
           interior_color: string | null
+          is_favorite: boolean
           is_removed: boolean
           km: number | null
           last_opened_at: string | null
@@ -58,6 +59,7 @@ export type Database = {
           exterior_color?: string | null
           id?: string
           interior_color?: string | null
+          is_favorite?: boolean
           is_removed?: boolean
           km?: number | null
           last_opened_at?: string | null
@@ -74,6 +76,7 @@ export type Database = {
           exterior_color?: string | null
           id?: string
           interior_color?: string | null
+          is_favorite?: boolean
           is_removed?: boolean
           km?: number | null
           last_opened_at?: string | null

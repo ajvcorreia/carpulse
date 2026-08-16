@@ -198,6 +198,18 @@ export async function markCarOpened(carId: string) {
   revalidatePath("/");
 }
 
+// Plain args, not FormData, and no redirect — called directly from a client
+// component (the dashboard's star toggle and the detail page's favorite
+// button both use this), which sidesteps the form-reset-on-non-redirect
+// issue that plain <form action> bindings hit elsewhere in this app.
+export async function setCarFavorite(carId: string, favorite: boolean) {
+  if (!carId) return;
+  const supabase = createClient();
+  await supabase.from("cars").update({ is_favorite: favorite }).eq("id", carId);
+  revalidatePath("/");
+  revalidatePath(`/car/${carId}`);
+}
+
 export async function addPrice(_prevState: unknown, formData: FormData) {
   const carId = String(formData.get("car_id") ?? "");
   const price = parseNumber(formData.get("price"));
@@ -292,6 +304,7 @@ const importCarSchema = z.object({
   interior_color: z.string().nullable().optional(),
   ad_placed_at: z.string().nullable().optional(),
   created_at: z.string().optional(),
+  is_favorite: z.boolean().optional(),
   price_history: z.array(importPriceSchema).default([]),
 });
 
@@ -344,6 +357,7 @@ export async function importData(_prevState: unknown, formData: FormData) {
           exterior_color: entry.exterior_color ?? null,
           interior_color: entry.interior_color ?? null,
           ad_placed_at: entry.ad_placed_at ?? null,
+          is_favorite: entry.is_favorite ?? false,
           ...(entry.created_at ? { created_at: entry.created_at } : {}),
         })
         .select("id")

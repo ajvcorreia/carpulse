@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Sparkline } from "@/components/Sparkline";
+import { FavoriteToggle } from "@/components/FavoriteToggle";
 import { markCarOpened } from "@/lib/actions";
 import { formatPrice, latestDelta } from "@/lib/format";
 import type { CarWithPrices, PricePoint } from "@/lib/types";
@@ -28,6 +29,7 @@ function mostRecentlyOpenedId(cars: CarWithPrices[]): string | null {
 }
 
 type SortKey =
+  | "favorite"
   | "car"
   | "year"
   | "spec"
@@ -99,6 +101,12 @@ function compareNullable<T>(a: T | null, b: T | null, cmp: (x: T, y: T) => numbe
 
 function compareRows(a: Row, b: Row, key: SortKey): number {
   switch (key) {
+    case "favorite":
+      // Favorites first on the first click (ascending) — the opposite of
+      // the usual false-before-true boolean order, since "sort by
+      // favorite" means "show me my favorites," not "show non-favorites."
+      if (a.car.is_favorite === b.car.is_favorite) return 0;
+      return a.car.is_favorite ? -1 : 1;
     case "car":
       return `${a.car.make} ${a.car.model} ${a.car.year}`.localeCompare(
         `${b.car.make} ${b.car.model} ${b.car.year}`
@@ -149,6 +157,7 @@ function matchesFilters(row: Row, filters: Filters): boolean {
 }
 
 const HEADERS: { key: SortKey; label: string }[] = [
+  { key: "favorite", label: "★" },
   { key: "car", label: "Car" },
   { key: "price", label: "Latest price" },
   { key: "year", label: "Year" },
@@ -458,6 +467,13 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
                     >
                       Details
                     </Link>
+                  </td>
+                  <td className="px-3 py-2">
+                    <FavoriteToggle
+                      carId={car.id}
+                      isFavorite={car.is_favorite}
+                      className="text-lg leading-none text-series-1 hover:opacity-70 disabled:opacity-60"
+                    />
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
