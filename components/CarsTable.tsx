@@ -9,8 +9,7 @@ import { formatPrice, latestDelta } from "@/lib/format";
 import type { CarWithPrices, PricePoint } from "@/lib/types";
 
 // How long a "you just opened this one" highlight stays live. Derived from
-// the cars prop's last_opened_at (set server-side by markCarOpened) rather
-// than any client-side cross-tab storage — see OpenListingRedirect.
+// the cars prop's last_opened_at (set server-side by markCarOpened).
 const SELECTED_WINDOW_MS = 10 * 60 * 1000;
 
 function mostRecentlyOpenedId(cars: CarWithPrices[]): string | null {
@@ -162,9 +161,9 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
-  // Which row's listing was last opened in a new tab — highlighted so it's
-  // obvious which one you were looking at when you switch back to this tab.
-  // Derived from the cars prop (server data), not local/client storage.
+  // Which row's listing was last opened — highlighted so it's obvious which
+  // one you were looking at when you come back. Derived from the cars prop
+  // (server data), not local/client storage.
   const selectedId = useMemo(() => mostRecentlyOpenedId(cars), [cars]);
 
   const rows = useMemo<Row[]>(
@@ -230,35 +229,15 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
     }
   }, []);
 
-  // "Which listing did I just open" is recorded server-side by
-  // OpenListingRedirect running in the *new* tab (see markCarOpened) — this
-  // tab only finds out by re-fetching. router.refresh() re-runs the server
-  // component tree for the current route, so `cars` comes back with an
-  // updated last_opened_at whenever this tab regains focus.
-  useEffect(() => {
-    function refresh() {
-      router.refresh();
-    }
-    function handleVisibility() {
-      if (document.visibilityState === "visible") refresh();
-    }
-
-    window.addEventListener("focus", refresh);
-    document.addEventListener("visibilitychange", handleVisibility);
-    return () => {
-      window.removeEventListener("focus", refresh);
-      document.removeEventListener("visibilitychange", handleVisibility);
-    };
-  }, [router]);
-
-  // Belt-and-suspenders alongside OpenListingRedirect's own markCarOpened
-  // call: some mobile browsers (Chrome on iOS in particular) lazily create a
-  // background tab for target="_blank" without loading it — and therefore
-  // without running any of its JS — until the user actually switches to it,
-  // so the *new* tab's own marking can be delayed arbitrarily. Firing this
-  // from the dashboard tab itself, at the moment of the tap, doesn't depend
-  // on the new tab doing anything at all. router.refresh() right after
-  // gives instant same-tab feedback too, not just on next focus.
+  // Listing links navigate in this same tab (no target="_blank" — iOS
+  // hands dubizzle.com URLs off to the native app when opened that way,
+  // which skips our page/JS entirely, so there was never a reliable "new
+  // tab" to track). Marking happens on mousedown/touchstart, before the
+  // browser acts on the tap, so it's recorded even though the page is about
+  // to navigate away. Coming back (the browser's back button) is either a
+  // fresh server render — cars already reflects last_opened_at — or a
+  // bfcache restore of the pre-navigation render, which already applied the
+  // highlight via this same router.refresh() call.
   function markOpened(carId: string) {
     markCarOpened(carId).then(() => router.refresh());
   }
@@ -439,15 +418,13 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
                   <td className="px-3 py-2">
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                       <a
-                        href={`/car/${car.id}/open`}
-                        target="_blank"
-                        rel="noreferrer"
-                        title="Open the Dubizzle listing in a new tab"
+                        href={car.url}
+                        title="Open the Dubizzle listing"
                         onMouseDown={() => markOpened(car.id)}
                         onTouchStart={() => markOpened(car.id)}
                         className="font-medium text-text-primary hover:underline"
                       >
-                        {car.make} {car.model} ↗
+                        {car.make} {car.model}
                       </a>
                       {car.is_removed ? (
                         <span className="rounded-full bg-critical/10 px-1.5 py-0.5 text-xs font-medium text-critical no-underline">
