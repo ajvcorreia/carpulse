@@ -19,10 +19,20 @@ export default async function AddPage({
 
   const existing = await getCarByUrl(url);
 
+  const backButton = (
+    <Link
+      href="/"
+      className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text-secondary hover:border-series-1 hover:text-text-primary"
+    >
+      ← All cars
+    </Link>
+  );
+
   if (existing) {
     const latest = existing.price_history[existing.price_history.length - 1];
     return (
       <div className="space-y-6">
+        {backButton}
         <div className="space-y-1">
           <h1 className="text-xl font-semibold">
             {existing.year} {existing.make} {existing.model}
@@ -53,6 +63,7 @@ export default async function AddPage({
 
   return (
     <div className="space-y-6">
+      {backButton}
       <div className="space-y-1">
         <h1 className="text-xl font-semibold">New car</h1>
         <p className="break-all text-sm text-text-secondary">{url}</p>
