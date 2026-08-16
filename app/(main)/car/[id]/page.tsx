@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { getCarWithPrices } from "@/lib/data";
 import { PriceChart } from "@/components/PriceChart";
 import { AddPriceForm } from "@/components/AddPriceForm";
+import { PriceHistoryList } from "@/components/PriceHistoryList";
 import { setCarRemoved } from "@/lib/actions";
 import { formatPrice, latestDelta } from "@/lib/format";
 
@@ -101,21 +102,7 @@ export default async function CarDetailPage({ params }: { params: Promise<{ id: 
         <AddPriceForm carId={car.id} />
       </div>
 
-      {car.price_history.length > 0 ? (
-        <div className="space-y-2">
-          <h2 className="text-sm font-medium text-text-secondary">Price history</h2>
-          <table className="w-full max-w-sm text-sm">
-            <tbody>
-              {[...car.price_history].reverse().map((p) => (
-                <tr key={p.id} className="border-b border-border last:border-0">
-                  <td className="py-1.5 text-text-secondary">{p.recorded_at}</td>
-                  <td className="tabular-nums py-1.5 text-right font-medium">{formatPrice(p.price, p.currency)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : null}
+      <PriceHistoryList carId={car.id} points={car.price_history} />
     </div>
   );
 }

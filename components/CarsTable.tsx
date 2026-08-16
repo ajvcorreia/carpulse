@@ -383,7 +383,7 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
                     <Link
                       href={`/car/${car.id}`}
                       title="View price history"
-                      className="text-xs text-text-secondary no-underline hover:text-series-1 hover:underline"
+                      className="inline-flex items-center rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text-secondary no-underline hover:border-series-1 hover:text-text-primary"
                     >
                       Details
                     </Link>

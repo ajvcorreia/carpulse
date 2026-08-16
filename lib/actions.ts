@@ -205,6 +205,59 @@ export async function addPrice(_prevState: unknown, formData: FormData) {
   redirect(`/car/${carId}`);
 }
 
+// Called directly from a client component (not bound to a <form action>),
+// so it can return the deleted row's data for an "Undo" affordance and
+// doesn't redirect — the list re-renders from revalidated data instead.
+export async function deletePrice(formData: FormData) {
+  const priceId = String(formData.get("price_id") ?? "");
+  const carId = String(formData.get("car_id") ?? "");
+
+  if (!priceId || !carId) {
+    return { error: "Missing price entry." };
+  }
+
+  const supabase = createClient();
+  const { data: deleted, error } = await supabase
+    .from("price_history")
+    .delete()
+    .eq("id", priceId)
+    .select("price, currency, recorded_at")
+    .single();
+
+  if (error || !deleted) {
+    return { error: error?.message ?? "Could not delete that price." };
+  }
+
+  revalidatePath("/");
+  revalidatePath(`/car/${carId}`);
+  return { success: true as const, deleted };
+}
+
+// Re-inserts a price row deleted via deletePrice. This is a plain insert,
+// not a real "undo" of the specific row (a new id/created_at), which is
+// fine here: nothing else keys off a price_history row's identity.
+export async function undoDeletePrice(formData: FormData) {
+  const carId = String(formData.get("car_id") ?? "");
+  const price = parseNumber(formData.get("price"));
+  const currency = String(formData.get("currency") ?? "AED");
+  const recordedAt = parseDate(formData.get("recorded_at"));
+
+  if (!carId || price == null || !recordedAt) {
+    return { error: "Nothing to restore." };
+  }
+
+  const supabase = createClient();
+  const { error } = await supabase.from("price_history").insert({ car_id: carId, price, currency, recorded_at: recordedAt });
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  revalidatePath("/");
+  revalidatePath(`/car/${carId}`);
+  return { success: true as const };
+}
+
 const importPriceSchema = z.object({
   price: z.number().nonnegative(),
   currency: z.string().min(1).default("AED"),
