@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Sparkline } from "@/components/Sparkline";
+import { markCarOpened } from "@/lib/actions";
 import { formatPrice, latestDelta } from "@/lib/format";
 import type { CarWithPrices, PricePoint } from "@/lib/types";
 
@@ -250,6 +251,18 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
     };
   }, [router]);
 
+  // Belt-and-suspenders alongside OpenListingRedirect's own markCarOpened
+  // call: some mobile browsers (Chrome on iOS in particular) lazily create a
+  // background tab for target="_blank" without loading it — and therefore
+  // without running any of its JS — until the user actually switches to it,
+  // so the *new* tab's own marking can be delayed arbitrarily. Firing this
+  // from the dashboard tab itself, at the moment of the tap, doesn't depend
+  // on the new tab doing anything at all. router.refresh() right after
+  // gives instant same-tab feedback too, not just on next focus.
+  function markOpened(carId: string) {
+    markCarOpened(carId).then(() => router.refresh());
+  }
+
   function toggleSort(key: SortKey) {
     const nextDir: SortDir = sortKey === key ? (sortDir === "asc" ? "desc" : "asc") : "asc";
     setSortKey(key);
@@ -430,6 +443,8 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
                         target="_blank"
                         rel="noreferrer"
                         title="Open the Dubizzle listing in a new tab"
+                        onMouseDown={() => markOpened(car.id)}
+                        onTouchStart={() => markOpened(car.id)}
                         className="font-medium text-text-primary hover:underline"
                       >
                         {car.make} {car.model} ↗
