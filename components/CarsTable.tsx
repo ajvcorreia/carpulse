@@ -60,6 +60,7 @@ type Filters = {
   priceMax: string;
   hideRemoved: boolean;
   hideStruckOut: boolean;
+  onlyPriceUpdates: boolean;
 };
 
 const DEFAULT_FILTERS: Filters = {
@@ -73,6 +74,7 @@ const DEFAULT_FILTERS: Filters = {
   priceMax: "",
   hideRemoved: true,
   hideStruckOut: true,
+  onlyPriceUpdates: false,
 };
 
 const FILTERS_STORAGE_KEY = "dubbizlewatch:filters";
@@ -135,10 +137,13 @@ function compareRows(a: Row, b: Row, key: SortKey): number {
 }
 
 function matchesFilters(row: Row, filters: Filters): boolean {
-  const { car, latest } = row;
+  const { car, latest, points } = row;
 
   if (filters.hideRemoved && car.is_removed) return false;
   if (filters.hideStruckOut && car.is_struck_out) return false;
+  // "Had a price update" means more than one recorded price point — the
+  // first entry is the initial tracked price, not an update.
+  if (filters.onlyPriceUpdates && points.length < 2) return false;
 
   if (filters.search.trim()) {
     const needle = filters.search.trim().toLowerCase();
@@ -424,6 +429,14 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
             onChange={(e) => setFilter("hideStruckOut", e.target.checked)}
           />
           Hide struck out cars
+        </label>
+        <label className="flex items-center gap-2 self-end pb-1.5 text-sm text-text-secondary">
+          <input
+            type="checkbox"
+            checked={filters.onlyPriceUpdates}
+            onChange={(e) => setFilter("onlyPriceUpdates", e.target.checked)}
+          />
+          Only cars with price updates
         </label>
         {hasActiveFilters ? (
           <button type="button" onClick={resetFilters} className="text-sm text-series-1 hover:underline">
