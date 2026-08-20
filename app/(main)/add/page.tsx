@@ -31,7 +31,7 @@ export default async function AddPage({
   if (existing) {
     const latest = existing.price_history[existing.price_history.length - 1];
     return (
-      <div className="space-y-6">
+      <div className="mx-auto max-w-2xl space-y-6">
         {backButton}
         <div className="space-y-1">
           <h1 className="text-xl font-semibold">
@@ -62,7 +62,7 @@ export default async function AddPage({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-2xl space-y-6">
       {backButton}
       <div className="space-y-1">
         <h1 className="text-xl font-semibold">New car</h1>

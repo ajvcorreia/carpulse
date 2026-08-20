@@ -12,7 +12,7 @@ export default async function EditCarPage({ params }: { params: Promise<{ id: st
   }
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-2xl space-y-6">
       <Link
         href={`/car/${car.id}`}
         className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text-secondary hover:border-series-1 hover:text-text-primary"

@@ -20,7 +20,7 @@ export default async function CarDetailPage({ params }: { params: Promise<{ id: 
   const delta = latestDelta(car.price_history);
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-2xl space-y-6">
       <div className="flex items-center justify-between">
         <Link
           href="/"

@@ -6,7 +6,7 @@ export default async function DashboardPage() {
   const cars = await getCarsWithPrices();
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-[1600px] space-y-6">
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-semibold">Tracked cars</h1>

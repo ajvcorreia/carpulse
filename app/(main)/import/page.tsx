@@ -8,7 +8,7 @@ export default function ImportPage() {
   const [state, formAction, pending] = useActionState(importData, null);
 
   return (
-    <div className="max-w-lg space-y-6">
+    <div className="mx-auto max-w-lg space-y-6">
       <Link
         href="/"
         className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text-secondary hover:border-series-1 hover:text-text-primary"
