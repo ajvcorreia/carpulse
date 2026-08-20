@@ -30,6 +30,7 @@ function mostRecentlyOpenedId(cars: CarWithPrices[]): string | null {
 
 type SortKey =
   | "favorite"
+  | "removed"
   | "car"
   | "year"
   | "spec"
@@ -117,6 +118,9 @@ function compareRows(a: Row, b: Row, key: SortKey): number {
       // favorite" means "show me my favorites," not "show non-favorites."
       if (a.car.is_favorite === b.car.is_favorite) return 0;
       return a.car.is_favorite ? -1 : 1;
+    case "removed":
+      if (a.car.is_removed === b.car.is_removed) return 0;
+      return a.car.is_removed ? 1 : -1;
     case "car":
       return `${a.car.make} ${a.car.model} ${a.car.year}`.localeCompare(
         `${b.car.make} ${b.car.model} ${b.car.year}`
@@ -208,6 +212,7 @@ function optionsFor<T>(
 
 const HEADERS: { key: SortKey; label: string }[] = [
   { key: "favorite", label: "★" },
+  { key: "removed", label: "Status" },
   { key: "car", label: "Car" },
   { key: "price", label: "Latest price" },
   { key: "year", label: "Year" },
@@ -603,6 +608,27 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
                     />
                   </td>
                   <td className="px-3 py-2">
+                    {car.is_removed ? (
+                      <button
+                        type="button"
+                        onClick={() => toggleRemoved(car.id, false)}
+                        title="Click to mark as active again"
+                        className="rounded-full bg-critical/10 px-1.5 py-0.5 text-xs font-medium text-critical no-underline hover:bg-critical/20"
+                      >
+                        Removed
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => toggleRemoved(car.id, true)}
+                        title="Mark as removed from Dubizzle"
+                        className="rounded-full border border-border px-1.5 py-0.5 text-xs font-medium text-text-muted no-underline hover:border-critical hover:text-critical"
+                      >
+                        Mark removed
+                      </button>
+                    )}
+                  </td>
+                  <td className="px-3 py-2">
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                       <a
                         href={car.url}
@@ -616,25 +642,6 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
                         {car.make} {car.model}
                         {isDesktop ? " ↗" : null}
                       </a>
-                      {car.is_removed ? (
-                        <button
-                          type="button"
-                          onClick={() => toggleRemoved(car.id, false)}
-                          title="Click to mark as active again"
-                          className="rounded-full bg-critical/10 px-1.5 py-0.5 text-xs font-medium text-critical no-underline hover:bg-critical/20"
-                        >
-                          Removed
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => toggleRemoved(car.id, true)}
-                          title="Mark as removed from Dubizzle"
-                          className="rounded-full border border-border px-1.5 py-0.5 text-xs font-medium text-text-muted no-underline hover:border-critical hover:text-critical"
-                        >
-                          Mark removed
-                        </button>
-                      )}
                       {car.is_struck_out ? (
                         <span
                           title={car.strike_out_reason ?? undefined}
