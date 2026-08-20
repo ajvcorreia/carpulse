@@ -219,6 +219,17 @@ export async function markCarOpened(carId: string) {
   revalidatePath("/");
 }
 
+// Plain args, no redirect — for toggling is_removed from the dashboard table
+// without leaving it. setCarRemoved (the FormData/redirect version above)
+// stays as-is for the detail page's button.
+export async function setCarRemovedFlag(carId: string, removed: boolean) {
+  if (!carId) return;
+  const supabase = createClient();
+  await supabase.from("cars").update({ is_removed: removed }).eq("id", carId);
+  revalidatePath("/");
+  revalidatePath(`/car/${carId}`);
+}
+
 // Plain args, not FormData, and no redirect — called directly from a client
 // component (the dashboard's star toggle and the detail page's favorite
 // button both use this), which sidesteps the form-reset-on-non-redirect

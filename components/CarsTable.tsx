@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Sparkline } from "@/components/Sparkline";
 import { FavoriteToggle } from "@/components/FavoriteToggle";
-import { markCarOpened } from "@/lib/actions";
+import { markCarOpened, setCarRemovedFlag } from "@/lib/actions";
 import { daysOnDubizzle, formatPrice, latestDelta } from "@/lib/format";
 import type { CarWithPrices, PricePoint } from "@/lib/types";
 
@@ -373,6 +373,10 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
     markCarOpened(carId).then(() => router.refresh());
   }
 
+  function toggleRemoved(carId: string, removed: boolean) {
+    setCarRemovedFlag(carId, removed).then(() => router.refresh());
+  }
+
   function toggleSort(key: SortKey) {
     const nextDir: SortDir = sortKey === key ? (sortDir === "asc" ? "desc" : "asc") : "asc";
     setSortKey(key);
@@ -613,10 +617,24 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
                         {isDesktop ? " ↗" : null}
                       </a>
                       {car.is_removed ? (
-                        <span className="rounded-full bg-critical/10 px-1.5 py-0.5 text-xs font-medium text-critical no-underline">
+                        <button
+                          type="button"
+                          onClick={() => toggleRemoved(car.id, false)}
+                          title="Click to mark as active again"
+                          className="rounded-full bg-critical/10 px-1.5 py-0.5 text-xs font-medium text-critical no-underline hover:bg-critical/20"
+                        >
                           Removed
-                        </span>
-                      ) : null}
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => toggleRemoved(car.id, true)}
+                          title="Mark as removed from Dubizzle"
+                          className="rounded-full border border-border px-1.5 py-0.5 text-xs font-medium text-text-muted no-underline hover:border-critical hover:text-critical"
+                        >
+                          Mark removed
+                        </button>
+                      )}
                       {car.is_struck_out ? (
                         <span
                           title={car.strike_out_reason ?? undefined}
