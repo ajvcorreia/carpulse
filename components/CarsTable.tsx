@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Sparkline } from "@/components/Sparkline";
 import { FavoriteToggle } from "@/components/FavoriteToggle";
 import { markCarOpened } from "@/lib/actions";
-import { formatPrice, latestDelta } from "@/lib/format";
+import { daysOnDubizzle, formatPrice, latestDelta } from "@/lib/format";
 import type { CarWithPrices, PricePoint } from "@/lib/types";
 
 // How long a "you just opened this one" highlight stays live. Derived from
@@ -38,6 +38,7 @@ type SortKey =
   | "km"
   | "cylinders"
   | "ad_placed_at"
+  | "days_on_dubizzle"
   | "price"
   | "change";
 type SortDir = "asc" | "desc";
@@ -47,6 +48,7 @@ type Row = {
   points: PricePoint[];
   latest: PricePoint | null;
   delta: number | null;
+  daysListed: number | null;
 };
 
 type Filters = {
@@ -129,6 +131,8 @@ function compareRows(a: Row, b: Row, key: SortKey): number {
       return compareNullable(a.car.cylinders, b.car.cylinders, (x, y) => x - y);
     case "ad_placed_at":
       return compareNullable(a.car.ad_placed_at, b.car.ad_placed_at, (x, y) => x.localeCompare(y));
+    case "days_on_dubizzle":
+      return compareNullable(a.daysListed, b.daysListed, (x, y) => x - y);
     case "price":
       return compareNullable(a.latest?.price ?? null, b.latest?.price ?? null, (x, y) => x - y);
     case "change":
@@ -175,6 +179,7 @@ const HEADERS: { key: SortKey; label: string }[] = [
   { key: "km", label: "KM" },
   { key: "cylinders", label: "Cyl." },
   { key: "ad_placed_at", label: "Ad placed" },
+  { key: "days_on_dubizzle", label: "Days on Dubizzle" },
   { key: "change", label: "Change" },
 ];
 
@@ -228,6 +233,7 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
           points,
           latest: points[points.length - 1] ?? null,
           delta: latestDelta(points),
+          daysListed: daysOnDubizzle(car.ad_placed_at),
         };
       }),
     [cars]
@@ -476,7 +482,7 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
               </tr>
             </thead>
             <tbody>
-              {sortedRows.map(({ car, points, latest, delta }) => (
+              {sortedRows.map(({ car, points, latest, delta, daysListed }) => (
                 <tr
                   key={car.id}
                   className={`border-b border-border last:border-0 ${
@@ -540,6 +546,7 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
                   </td>
                   <td className="tabular-nums px-3 py-2 text-text-secondary">{car.cylinders ?? "—"}</td>
                   <td className="px-3 py-2 text-text-secondary">{car.ad_placed_at ?? "—"}</td>
+                  <td className="tabular-nums px-3 py-2 text-text-secondary">{daysListed ?? "—"}</td>
                   <td className="tabular-nums px-3 py-2">
                     {delta == null ? (
                       <span className="text-text-muted">—</span>
