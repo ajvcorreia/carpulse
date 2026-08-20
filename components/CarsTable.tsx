@@ -52,7 +52,9 @@ type Row = {
 };
 
 type Filters = {
-  search: string;
+  make: string;
+  model: string;
+  year: string;
   spec: string;
   exteriorColor: string;
   interiorColor: string;
@@ -66,7 +68,9 @@ type Filters = {
 };
 
 const DEFAULT_FILTERS: Filters = {
-  search: "",
+  make: "",
+  model: "",
+  year: "",
   spec: "",
   exteriorColor: "",
   interiorColor: "",
@@ -149,11 +153,9 @@ function matchesFilters(row: Row, filters: Filters): boolean {
   // first entry is the initial tracked price, not an update.
   if (filters.onlyPriceUpdates && points.length < 2) return false;
 
-  if (filters.search.trim()) {
-    const needle = filters.search.trim().toLowerCase();
-    const haystack = `${car.make} ${car.model} ${car.year}`.toLowerCase();
-    if (!haystack.includes(needle)) return false;
-  }
+  if (filters.make && car.make !== filters.make) return false;
+  if (filters.model && car.model !== filters.model) return false;
+  if (filters.year && String(car.year) !== filters.year) return false;
   if (filters.spec && car.spec !== filters.spec) return false;
   if (filters.exteriorColor && car.exterior_color !== filters.exteriorColor) return false;
   if (filters.interiorColor && car.interior_color !== filters.interiorColor) return false;
@@ -239,6 +241,12 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
     [cars]
   );
 
+  const makeOptions = useMemo(() => Array.from(new Set(cars.map((c) => c.make))).sort(), [cars]);
+  const modelOptions = useMemo(() => Array.from(new Set(cars.map((c) => c.model))).sort(), [cars]);
+  const yearOptions = useMemo(
+    () => Array.from(new Set(cars.map((c) => c.year))).sort((a, b) => b - a),
+    [cars]
+  );
   const specOptions = useMemo(
     () => Array.from(new Set(cars.map((c) => c.spec).filter((v): v is string => !!v))).sort(),
     [cars]
@@ -337,14 +345,35 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-surface p-3">
-        <FilterField label="Search">
-          <input
-            type="text"
-            value={filters.search}
-            onChange={(e) => setFilter("search", e.target.value)}
-            placeholder="Make, model, year…"
-            className={`${selectClass} w-40`}
-          />
+        <FilterField label="Make">
+          <select value={filters.make} onChange={(e) => setFilter("make", e.target.value)} className={selectClass}>
+            <option value="">All</option>
+            {makeOptions.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+        </FilterField>
+        <FilterField label="Model">
+          <select value={filters.model} onChange={(e) => setFilter("model", e.target.value)} className={selectClass}>
+            <option value="">All</option>
+            {modelOptions.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+        </FilterField>
+        <FilterField label="Year">
+          <select value={filters.year} onChange={(e) => setFilter("year", e.target.value)} className={selectClass}>
+            <option value="">All</option>
+            {yearOptions.map((y) => (
+              <option key={y} value={y}>
+                {y}
+              </option>
+            ))}
+          </select>
         </FilterField>
         <FilterField label="Spec">
           <select value={filters.spec} onChange={(e) => setFilter("spec", e.target.value)} className={selectClass}>
