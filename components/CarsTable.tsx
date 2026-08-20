@@ -170,6 +170,42 @@ function matchesFilters(row: Row, filters: Filters): boolean {
   return true;
 }
 
+// One-directional cascade, not mutual constraining: Make narrows Model
+// narrows Year narrows Spec narrows Ext. color narrows Int. color, but never
+// the reverse. Mutual constraining would let a downstream pick (e.g. a
+// BMW-only model) shrink an upstream list (Make) down to the point where the
+// option you actually want to switch to isn't even in the <select> anymore —
+// a dead end the user can't click their way out of.
+const FIELD_ORDER: (keyof Filters)[] = ["make", "model", "year", "spec", "exteriorColor", "interiorColor"];
+
+function optionsFor<T>(
+  rows: Row[],
+  filters: Filters,
+  forKey: (typeof FIELD_ORDER)[number],
+  pick: (car: CarWithPrices) => T | null
+): T[] {
+  const scoped: Filters = { ...DEFAULT_FILTERS };
+  scoped.hideRemoved = filters.hideRemoved;
+  scoped.hideStruckOut = filters.hideStruckOut;
+  scoped.onlyPriceUpdates = filters.onlyPriceUpdates;
+  scoped.kmMin = filters.kmMin;
+  scoped.kmMax = filters.kmMax;
+  scoped.priceMin = filters.priceMin;
+  scoped.priceMax = filters.priceMax;
+  for (const key of FIELD_ORDER) {
+    if (key === forKey) break;
+    (scoped[key] as string) = filters[key] as string;
+  }
+
+  const seen = new Set<T>();
+  for (const row of rows) {
+    if (!matchesFilters(row, scoped)) continue;
+    const value = pick(row.car);
+    if (value != null) seen.add(value);
+  }
+  return Array.from(seen);
+}
+
 const HEADERS: { key: SortKey; label: string }[] = [
   { key: "favorite", label: "★" },
   { key: "car", label: "Car" },
@@ -241,23 +277,29 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
     [cars]
   );
 
-  const makeOptions = useMemo(() => Array.from(new Set(cars.map((c) => c.make))).sort(), [cars]);
-  const modelOptions = useMemo(() => Array.from(new Set(cars.map((c) => c.model))).sort(), [cars]);
+  const makeOptions = useMemo(
+    () => optionsFor(rows, filters, "make", (c) => c.make).sort(),
+    [rows, filters]
+  );
+  const modelOptions = useMemo(
+    () => optionsFor(rows, filters, "model", (c) => c.model).sort(),
+    [rows, filters]
+  );
   const yearOptions = useMemo(
-    () => Array.from(new Set(cars.map((c) => c.year))).sort((a, b) => b - a),
-    [cars]
+    () => optionsFor(rows, filters, "year", (c) => c.year).sort((a, b) => b - a),
+    [rows, filters]
   );
   const specOptions = useMemo(
-    () => Array.from(new Set(cars.map((c) => c.spec).filter((v): v is string => !!v))).sort(),
-    [cars]
+    () => optionsFor(rows, filters, "spec", (c) => c.spec).sort(),
+    [rows, filters]
   );
   const exteriorColorOptions = useMemo(
-    () => Array.from(new Set(cars.map((c) => c.exterior_color).filter((v): v is string => !!v))).sort(),
-    [cars]
+    () => optionsFor(rows, filters, "exteriorColor", (c) => c.exterior_color).sort(),
+    [rows, filters]
   );
   const interiorColorOptions = useMemo(
-    () => Array.from(new Set(cars.map((c) => c.interior_color).filter((v): v is string => !!v))).sort(),
-    [cars]
+    () => optionsFor(rows, filters, "interiorColor", (c) => c.interior_color).sort(),
+    [rows, filters]
   );
 
   const filteredRows = useMemo(() => rows.filter((r) => matchesFilters(r, filters)), [rows, filters]);
@@ -295,6 +337,28 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
       // ignore
     }
   }, []);
+
+  // When one filter narrows another's option list (e.g. picking a Make that
+  // excludes the currently selected Model), drop the now-invalid selection
+  // rather than leaving a stale value the <select> can't actually display.
+  useEffect(() => {
+    const cleared: Partial<Filters> = {};
+    if (filters.make && !makeOptions.includes(filters.make)) cleared.make = "";
+    if (filters.model && !modelOptions.includes(filters.model)) cleared.model = "";
+    if (filters.year && !yearOptions.some((y) => String(y) === filters.year)) cleared.year = "";
+    if (filters.spec && !specOptions.includes(filters.spec)) cleared.spec = "";
+    if (filters.exteriorColor && !exteriorColorOptions.includes(filters.exteriorColor)) cleared.exteriorColor = "";
+    if (filters.interiorColor && !interiorColorOptions.includes(filters.interiorColor)) cleared.interiorColor = "";
+
+    if (Object.keys(cleared).length > 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setFilters((f) => {
+        const next = { ...f, ...cleared };
+        saveFilters(next);
+        return next;
+      });
+    }
+  }, [filters, makeOptions, modelOptions, yearOptions, specOptions, exteriorColorOptions, interiorColorOptions]);
 
   // Listing links navigate in this same tab (no target="_blank" — iOS
   // hands dubizzle.com URLs off to the native app when opened that way,
