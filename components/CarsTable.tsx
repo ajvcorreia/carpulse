@@ -7,6 +7,7 @@ import { Sparkline } from "@/components/Sparkline";
 import { FavoriteToggle } from "@/components/FavoriteToggle";
 import { markCarOpened, setCarRemovedFlag } from "@/lib/actions";
 import { daysOnDubizzle, formatPrice, latestDelta } from "@/lib/format";
+import { claudeInsightsUrl } from "@/lib/claude";
 import type { CarWithPrices, PricePoint } from "@/lib/types";
 
 // How long a "you just opened this one" highlight stays live. Derived from
@@ -804,6 +805,15 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
                         className="inline-flex items-center rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-series-1 no-underline hover:border-series-1"
                       >
                         Open listing{isDesktop ? " ↗" : ""}
+                      </a>
+                      <a
+                        href={claudeInsightsUrl(car, latest ? formatPrice(latest.price, latest.currency) : null)}
+                        target="_blank"
+                        rel="noreferrer"
+                        title="Ask Claude about this engine/trim: reliability, common issues, maintenance costs"
+                        className="inline-flex items-center rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text-secondary no-underline hover:border-series-1 hover:text-text-primary"
+                      >
+                        Ask Claude
                       </a>
                     </div>
 
