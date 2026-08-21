@@ -7,6 +7,7 @@ import { PriceHistoryList } from "@/components/PriceHistoryList";
 import { FavoriteToggle } from "@/components/FavoriteToggle";
 import { setCarRemoved, setCarStruckOut } from "@/lib/actions";
 import { formatPrice, latestDelta } from "@/lib/format";
+import { claudeInsightsUrl } from "@/lib/claude";
 
 export default async function CarDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -28,12 +29,23 @@ export default async function CarDetailPage({ params }: { params: Promise<{ id: 
         >
           ← All cars
         </Link>
-        <Link
-          href={`/car/${car.id}/edit`}
-          className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text-secondary hover:border-series-1 hover:text-text-primary"
-        >
-          Edit details
-        </Link>
+        <div className="flex items-center gap-2">
+          <a
+            href={claudeInsightsUrl(car, latest ? formatPrice(latest.price, latest.currency) : null)}
+            target="_blank"
+            rel="noreferrer"
+            title="Ask Claude about this engine/trim: reliability, common issues, maintenance costs"
+            className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text-secondary hover:border-series-1 hover:text-text-primary"
+          >
+            Ask Claude
+          </a>
+          <Link
+            href={`/car/${car.id}/edit`}
+            className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text-secondary hover:border-series-1 hover:text-text-primary"
+          >
+            Edit details
+          </Link>
+        </div>
       </div>
 
       <div className="space-y-1">
