@@ -12,10 +12,12 @@ export function claudeInsightsUrl(car: Car, latestPrice: string | null): string 
   if (latestPrice) details.push(`listed at ${latestPrice}`);
 
   const prompt =
-    `I'm considering a used car: ${details.join(", ")}. ` +
+    `I'm considering a used car: ${details.join(", ")}. Here's the listing: ${car.url}\n\n` +
     "Give me insights specific to this engine and trim: displacement, horsepower, torque, and the engine " +
     "model/code, known reliability, common recurring issues owners report, typical maintenance costs, and " +
-    "major maintenance items to budget for at this mileage (timing belt/chain, transmission service, etc.).";
+    "major maintenance items to budget for at this mileage (timing belt/chain, transmission service, etc.). " +
+    "Also check the listing page itself for anything relevant that isn't already in the details above, and " +
+    "flag any issues I should be aware of as well as any positives worth noting.";
 
   return `https://claude.ai/new?q=${encodeURIComponent(prompt)}`;
 }
