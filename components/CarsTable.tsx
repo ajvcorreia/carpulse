@@ -571,6 +571,32 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
         ) : null}
       </div>
 
+      <div className="flex flex-wrap items-end gap-2 sm:hidden">
+        <FilterField label="Sort by">
+          <select
+            value={sortKey ?? ""}
+            onChange={(e) => (e.target.value ? toggleSort(e.target.value as SortKey) : resetSort())}
+            className={selectClass}
+          >
+            <option value="">Default</option>
+            {HEADERS.map((h) => (
+              <option key={h.key} value={h.key}>
+                {h.label}
+              </option>
+            ))}
+          </select>
+        </FilterField>
+        {sortKey ? (
+          <button
+            type="button"
+            onClick={() => toggleSort(sortKey)}
+            className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text-secondary hover:border-series-1 hover:text-text-primary"
+          >
+            {sortDir === "asc" ? "▲ Ascending" : "▼ Descending"}
+          </button>
+        ) : null}
+      </div>
+
       {sortedRows.length === 0 ? (
         <p className="text-sm text-text-muted">No cars match these filters.</p>
       ) : (
@@ -761,18 +787,17 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
                         isFavorite={car.is_favorite}
                         className="inline-flex items-center rounded-lg border border-border bg-surface px-3 py-1.5 text-xl leading-none text-series-1 hover:opacity-70 disabled:opacity-60"
                       />
+                      <a
+                        href={car.url}
+                        target={isDesktop ? "_blank" : undefined}
+                        rel={isDesktop ? "noreferrer" : undefined}
+                        onMouseDown={() => markOpened(car.id)}
+                        onTouchStart={() => markOpened(car.id)}
+                        className="inline-flex items-center rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-series-1 no-underline hover:border-series-1"
+                      >
+                        Open listing{isDesktop ? " ↗" : ""}
+                      </a>
                     </div>
-
-                    <a
-                      href={car.url}
-                      target={isDesktop ? "_blank" : undefined}
-                      rel={isDesktop ? "noreferrer" : undefined}
-                      onMouseDown={() => markOpened(car.id)}
-                      onTouchStart={() => markOpened(car.id)}
-                      className="block text-sm text-series-1 hover:underline"
-                    >
-                      Open listing on Dubizzle{isDesktop ? " ↗" : ""}
-                    </a>
 
                     {car.is_struck_out ? (
                       <p className="text-sm text-critical">
