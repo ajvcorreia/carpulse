@@ -243,6 +243,10 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
+  // On narrow screens the table becomes a list of collapsed rows (make,
+  // model, price, year only) that expand in place to show everything else —
+  // avoids either a 14-column horizontal scroll or a second detail-page trip.
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   // Which row's listing was last opened — highlighted so it's obvious which
   // one you were looking at when you come back. Derived from the cars prop
   // (server data), not local/client storage.
@@ -380,6 +384,15 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
 
   function toggleRemoved(carId: string, removed: boolean) {
     setCarRemovedFlag(carId, removed).then(() => router.refresh());
+  }
+
+  function toggleExpanded(carId: string) {
+    setExpandedIds((ids) => {
+      const next = new Set(ids);
+      if (next.has(carId)) next.delete(carId);
+      else next.add(carId);
+      return next;
+    });
   }
 
   function toggleSort(key: SortKey) {
@@ -561,7 +574,8 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
       {sortedRows.length === 0 ? (
         <p className="text-sm text-text-muted">No cars match these filters.</p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-border">
+        <>
+        <div className="hidden overflow-x-auto rounded-lg border border-border sm:block">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border text-left text-text-secondary">
@@ -684,6 +698,141 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
             </tbody>
           </table>
         </div>
+
+        <div className="space-y-2 sm:hidden" data-testid="mobile-car-list">
+          {sortedRows.map(({ car, points, latest, delta, daysListed }) => {
+            const isExpanded = expandedIds.has(car.id);
+            return (
+              <div
+                key={car.id}
+                data-testid="mobile-car-card"
+                className={`overflow-hidden rounded-lg border border-border ${
+                  selectedId === car.id ? "bg-highlight" : ""
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={() => toggleExpanded(car.id)}
+                  aria-expanded={isExpanded}
+                  className="flex w-full items-center gap-3 px-3 py-3 text-left"
+                >
+                  <span
+                    className={`flex-1 font-medium ${
+                      car.is_removed || car.is_struck_out ? "text-text-muted line-through" : "text-text-primary"
+                    }`}
+                  >
+                    {car.make} {car.model}
+                  </span>
+                  <span className="tabular-nums text-sm font-medium">
+                    {latest ? formatPrice(latest.price, latest.currency) : "—"}
+                  </span>
+                  <span className="tabular-nums text-sm text-text-secondary">{car.year}</span>
+                  <span className="text-text-muted">{isExpanded ? "▲" : "▼"}</span>
+                </button>
+
+                {isExpanded ? (
+                  <div className="space-y-3 border-t border-border px-3 py-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Link
+                        href={`/car/${car.id}`}
+                        className="inline-flex items-center rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text-secondary no-underline hover:border-series-1 hover:text-text-primary"
+                      >
+                        Show details
+                      </Link>
+                      {car.is_removed ? (
+                        <button
+                          type="button"
+                          onClick={() => toggleRemoved(car.id, false)}
+                          className="inline-flex items-center rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text-secondary hover:border-series-1 hover:text-text-primary"
+                        >
+                          Mark active
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => toggleRemoved(car.id, true)}
+                          className="inline-flex items-center rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text-secondary hover:border-series-1 hover:text-text-primary"
+                        >
+                          Mark removed
+                        </button>
+                      )}
+                      <FavoriteToggle
+                        carId={car.id}
+                        isFavorite={car.is_favorite}
+                        className="inline-flex items-center rounded-lg border border-border bg-surface px-3 py-1.5 text-xl leading-none text-series-1 hover:opacity-70 disabled:opacity-60"
+                      />
+                    </div>
+
+                    <a
+                      href={car.url}
+                      target={isDesktop ? "_blank" : undefined}
+                      rel={isDesktop ? "noreferrer" : undefined}
+                      onMouseDown={() => markOpened(car.id)}
+                      onTouchStart={() => markOpened(car.id)}
+                      className="block text-sm text-series-1 hover:underline"
+                    >
+                      Open listing on Dubizzle{isDesktop ? " ↗" : ""}
+                    </a>
+
+                    {car.is_struck_out ? (
+                      <p className="text-sm text-critical">
+                        Struck out{car.strike_out_reason ? `: ${car.strike_out_reason}` : ""}
+                      </p>
+                    ) : null}
+
+                    <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                      <div>
+                        <dt className="text-text-secondary">Spec</dt>
+                        <dd>{car.spec ?? "—"}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-text-secondary">Ext. color</dt>
+                        <dd>{car.exterior_color ?? "—"}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-text-secondary">Int. color</dt>
+                        <dd>{car.interior_color ?? "—"}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-text-secondary">KM</dt>
+                        <dd className="tabular-nums">{car.km != null ? car.km.toLocaleString() : "—"}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-text-secondary">Cylinders</dt>
+                        <dd className="tabular-nums">{car.cylinders ?? "—"}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-text-secondary">Ad placed</dt>
+                        <dd>{car.ad_placed_at ?? "—"}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-text-secondary">Days on Dubizzle</dt>
+                        <dd className="tabular-nums">{daysListed ?? "—"}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-text-secondary">Change</dt>
+                        <dd className="tabular-nums">
+                          {delta == null ? (
+                            "—"
+                          ) : delta === 0 ? (
+                            "No change"
+                          ) : delta < 0 ? (
+                            <span className="text-good">▼ {formatPrice(Math.abs(delta), latest!.currency)}</span>
+                          ) : (
+                            <span className="text-critical">▲ {formatPrice(delta, latest!.currency)}</span>
+                          )}
+                        </dd>
+                      </div>
+                    </dl>
+
+                    <Sparkline points={points} />
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+        </>
       )}
     </div>
   );
