@@ -597,7 +597,7 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
                       title="View price history"
                       className="inline-flex items-center rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text-secondary no-underline hover:border-series-1 hover:text-text-primary"
                     >
-                      Details
+                      Show details
                     </Link>
                   </td>
                   <td className="px-3 py-2">
