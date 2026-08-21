@@ -386,6 +386,14 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
     setCarRemovedFlag(carId, removed).then(() => router.refresh());
   }
 
+  // Only confirming the removed direction — undoing it back to active needs
+  // no confirmation, since that's not the accidental-tap-prone one.
+  function markRemovedWithConfirm(car: CarWithPrices) {
+    if (window.confirm(`Mark ${car.year} ${car.make} ${car.model} as removed from Dubizzle?`)) {
+      toggleRemoved(car.id, true);
+    }
+  }
+
   function toggleExpanded(carId: string) {
     setExpandedIds((ids) => {
       const next = new Set(ids);
@@ -660,7 +668,7 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
                     ) : (
                       <button
                         type="button"
-                        onClick={() => toggleRemoved(car.id, true)}
+                        onClick={() => markRemovedWithConfirm(car)}
                         title="Mark as removed from Dubizzle"
                         className="inline-flex items-center rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text-secondary no-underline hover:border-series-1 hover:text-text-primary"
                       >
@@ -776,7 +784,7 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
                       ) : (
                         <button
                           type="button"
-                          onClick={() => toggleRemoved(car.id, true)}
+                          onClick={() => markRemovedWithConfirm(car)}
                           className="inline-flex items-center rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text-secondary hover:border-series-1 hover:text-text-primary"
                         >
                           Mark removed

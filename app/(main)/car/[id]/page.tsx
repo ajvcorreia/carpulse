@@ -5,6 +5,7 @@ import { PriceChart } from "@/components/PriceChart";
 import { AddPriceForm } from "@/components/AddPriceForm";
 import { PriceHistoryList } from "@/components/PriceHistoryList";
 import { FavoriteToggle } from "@/components/FavoriteToggle";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import { setCarRemoved, setCarStruckOut } from "@/lib/actions";
 import { formatPrice, latestDelta } from "@/lib/format";
 import { claudeInsightsUrl } from "@/lib/claude";
@@ -74,12 +75,13 @@ export default async function CarDetailPage({ params }: { params: Promise<{ id: 
         <form action={setCarRemoved}>
           <input type="hidden" name="car_id" value={car.id} />
           <input type="hidden" name="removed" value={car.is_removed ? "false" : "true"} />
-          <button
+          <ConfirmButton
             type="submit"
+            confirmMessage={car.is_removed ? undefined : `Mark ${car.year} ${car.make} ${car.model} as removed from Dubizzle?`}
             className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text-secondary hover:border-series-1 hover:text-text-primary"
           >
             {car.is_removed ? "Mark as active again" : "Mark as removed from Dubizzle"}
-          </button>
+          </ConfirmButton>
         </form>
 
         {car.is_struck_out ? (
