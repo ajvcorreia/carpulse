@@ -613,16 +613,16 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
                         type="button"
                         onClick={() => toggleRemoved(car.id, false)}
                         title="Click to mark as active again"
-                        className="rounded-full bg-critical/10 px-1.5 py-0.5 text-xs font-medium text-critical no-underline hover:bg-critical/20"
+                        className="inline-flex items-center rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text-secondary no-underline hover:border-series-1 hover:text-text-primary"
                       >
-                        Removed
+                        Mark active
                       </button>
                     ) : (
                       <button
                         type="button"
                         onClick={() => toggleRemoved(car.id, true)}
                         title="Mark as removed from Dubizzle"
-                        className="rounded-full border border-border px-1.5 py-0.5 text-xs font-medium text-text-muted no-underline hover:border-critical hover:text-critical"
+                        className="inline-flex items-center rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text-secondary no-underline hover:border-series-1 hover:text-text-primary"
                       >
                         Mark removed
                       </button>
