@@ -265,6 +265,32 @@ export async function addPrice(_prevState: unknown, formData: FormData) {
   redirect(`/car/${carId}`);
 }
 
+// Same as addPrice but for the dashboard's mobile card view, which adds a
+// price without navigating away — a redirect to the detail page would defeat
+// the point of doing this inline.
+export async function addPriceInline(_prevState: unknown, formData: FormData) {
+  const carId = String(formData.get("car_id") ?? "");
+  const price = parseNumber(formData.get("price"));
+  const recordedAt = parseDate(formData.get("recorded_at"));
+
+  if (!carId || price == null) {
+    return { error: "Price is required." };
+  }
+
+  const supabase = createClient();
+  const { error } = await supabase
+    .from("price_history")
+    .insert({ car_id: carId, price, ...(recordedAt ? { recorded_at: recordedAt } : {}) });
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  revalidatePath("/");
+  revalidatePath(`/car/${carId}`);
+  return { success: true as const };
+}
+
 // Called directly from a client component (not bound to a <form action>),
 // so it can return the deleted row's data for an "Undo" affordance and
 // doesn't redirect — the list re-renders from revalidated data instead.

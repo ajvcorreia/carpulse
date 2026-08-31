@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Sparkline } from "@/components/Sparkline";
 import { FavoriteToggle } from "@/components/FavoriteToggle";
+import { InlineAddPriceForm } from "@/components/InlineAddPriceForm";
 import { markCarOpened, setCarRemovedFlag } from "@/lib/actions";
 import { daysOnDubizzle, formatPrice, latestDelta } from "@/lib/format";
 import { claudeInsightsUrl } from "@/lib/claude";
@@ -389,9 +390,20 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
 
   // Only confirming the removed direction — undoing it back to active needs
   // no confirmation, since that's not the accidental-tap-prone one.
-  function markRemovedWithConfirm(car: CarWithPrices) {
+  // On the mobile card view, nextCardId auto-expands the next row so marking
+  // one removed (which usually makes it vanish, via the hide-removed filter)
+  // doesn't leave the user having to re-find their place in the list.
+  function markRemovedWithConfirm(car: CarWithPrices, nextCardId?: string) {
     if (window.confirm(`Mark ${car.year} ${car.make} ${car.model} as removed from Dubizzle?`)) {
       toggleRemoved(car.id, true);
+      if (nextCardId) {
+        setExpandedIds((ids) => {
+          const next = new Set(ids);
+          next.delete(car.id);
+          next.add(nextCardId);
+          return next;
+        });
+      }
     }
   }
 
@@ -735,8 +747,9 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
         </div>
 
         <div className="space-y-2 sm:hidden" data-testid="mobile-car-list">
-          {sortedRows.map(({ car, points, latest, delta, daysListed }) => {
+          {sortedRows.map(({ car, points, latest, delta, daysListed }, index) => {
             const isExpanded = expandedIds.has(car.id);
+            const nextCardId = sortedRows[index + 1]?.car.id;
             return (
               <div
                 key={car.id}
@@ -785,7 +798,7 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
                       ) : (
                         <button
                           type="button"
-                          onClick={() => markRemovedWithConfirm(car)}
+                          onClick={() => markRemovedWithConfirm(car, nextCardId)}
                           className="inline-flex items-center rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text-secondary hover:border-series-1 hover:text-text-primary"
                         >
                           Mark removed
@@ -867,6 +880,11 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
                         </dd>
                       </div>
                     </dl>
+
+                    <div className="space-y-1">
+                      <h3 className="text-xs font-medium text-text-secondary">Add a new price update</h3>
+                      <InlineAddPriceForm carId={car.id} />
+                    </div>
 
                     <Sparkline points={points} />
                   </div>
