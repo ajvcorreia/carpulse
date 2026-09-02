@@ -674,10 +674,12 @@ export function CarsTable({
                   type="button"
                   onClick={() => toggleExpanded(car.id)}
                   aria-expanded={isExpanded}
-                  className="flex w-full items-center gap-3 px-3 py-3 text-left"
+                  className={`flex w-full items-center gap-3 px-3 py-3 text-left ${
+                    isExpanded ? "bg-surface" : ""
+                  }`}
                 >
                   <span
-                    className={`flex-1 font-medium ${
+                    className={`flex-1 ${isExpanded ? "text-base font-semibold" : "font-medium"} ${
                       car.is_removed || car.is_struck_out ? "text-text-muted line-through" : "text-text-primary"
                     }`}
                   >
