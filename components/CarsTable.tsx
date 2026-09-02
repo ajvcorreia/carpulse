@@ -8,7 +8,7 @@ import { FavoriteToggle } from "@/components/FavoriteToggle";
 import { InlineAddPriceForm } from "@/components/InlineAddPriceForm";
 import { EditCarForm } from "@/components/EditCarForm";
 import { markCarOpened, setCarRemovedFlag, setCarStruckOut } from "@/lib/actions";
-import { daysOnDubizzle, formatPrice, latestDelta } from "@/lib/format";
+import { daysOnDubizzle, formatPrice, totalDelta } from "@/lib/format";
 import { claudeInsightsUrl } from "@/lib/claude";
 import type { CarWithPrices, PricePoint } from "@/lib/types";
 
@@ -228,7 +228,7 @@ const HEADERS: { key: SortKey; label: string }[] = [
   { key: "cylinders", label: "Cyl." },
   { key: "ad_placed_at", label: "Ad placed" },
   { key: "days_on_dubizzle", label: "Days on Dubizzle" },
-  { key: "change", label: "Change" },
+  { key: "change", label: "Total change" },
 ];
 
 const selectClass =
@@ -240,7 +240,7 @@ const actionButtonClass =
 // collapsed row on sm+ screens, so values line up into real columns like a
 // table even though each row is still a single expandable card.
 const DESKTOP_GRID_COLS =
-  "sm:grid-cols-[2.5rem_5rem_minmax(10rem,1fr)_6rem_3.5rem_6rem_5rem_5rem_5rem_3rem_6rem_4rem_6rem_1.5rem]";
+  "sm:grid-cols-[2.5rem_5rem_minmax(10rem,1fr)_6rem_3.5rem_6rem_5rem_5rem_5rem_3rem_6rem_4rem_7.5rem_1.5rem]";
 
 function FilterField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -312,7 +312,7 @@ export function CarsTable({
           car,
           points,
           latest: points[points.length - 1] ?? null,
-          delta: latestDelta(points),
+          delta: totalDelta(points),
           daysListed: daysOnDubizzle(car.ad_placed_at),
         };
       }),
@@ -910,7 +910,7 @@ export function CarsTable({
                             <dd className="tabular-nums">{daysListed ?? "—"}</dd>
                           </div>
                           <div>
-                            <dt className="text-text-secondary">Change</dt>
+                            <dt className="text-text-secondary">Total change</dt>
                             <dd className="tabular-nums">
                               {delta == null ? (
                                 "—"

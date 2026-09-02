@@ -4,11 +4,13 @@ export function formatPrice(price: number, currency: string) {
   return price.toLocaleString(undefined, { style: "currency", currency, maximumFractionDigits: 0 });
 }
 
-export function latestDelta(points: PricePoint[]) {
+// Total change from the first recorded price to the latest — how much the
+// car has moved since tracking started, not just the most recent update.
+export function totalDelta(points: PricePoint[]) {
   if (points.length < 2) return null;
+  const first = points[0];
   const latest = points[points.length - 1];
-  const previous = points[points.length - 2];
-  return latest.price - previous.price;
+  return latest.price - first.price;
 }
 
 // ad_placed_at is a plain date ("2026-08-05"), so compare calendar days
