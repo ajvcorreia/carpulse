@@ -236,6 +236,12 @@ const selectClass =
 const actionButtonClass =
   "inline-flex items-center rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text-secondary no-underline hover:border-series-1 hover:text-text-primary";
 
+// Shared column template — used on both the header row and every card's
+// collapsed row on sm+ screens, so values line up into real columns like a
+// table even though each row is still a single expandable card.
+const DESKTOP_GRID_COLS =
+  "sm:grid-cols-[2.5rem_5rem_minmax(10rem,1fr)_6rem_3.5rem_6rem_5rem_5rem_5rem_3rem_6rem_4rem_6rem_1.5rem]";
+
 function FilterField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="flex flex-col gap-1">
@@ -626,7 +632,8 @@ export function CarsTable({
         ) : null}
       </div>
 
-      <div className="flex flex-wrap items-end gap-2">
+      {/* Mobile: a "Sort by" select, since there's no header row to click. */}
+      <div className="flex flex-wrap items-end gap-2 sm:hidden">
         <FilterField label="Sort by">
           <select
             value={sortKey ?? ""}
@@ -652,6 +659,25 @@ export function CarsTable({
         ) : null}
       </div>
 
+      {/* Desktop: clickable column headers, same as the columns each card's
+          collapsed row lines up into. */}
+      <div className={`hidden sm:grid sm:items-center sm:gap-x-3 sm:px-3 ${DESKTOP_GRID_COLS}`}>
+        {HEADERS.map((h) => (
+          <button
+            key={h.key}
+            type="button"
+            onClick={() => toggleSort(h.key)}
+            className="flex items-center gap-1 text-left text-xs font-medium text-text-secondary hover:text-text-primary"
+          >
+            {h.label}
+            {sortKey === h.key ? (
+              <span className="text-series-1">{sortDir === "asc" ? "▲" : "▼"}</span>
+            ) : null}
+          </button>
+        ))}
+        <span />
+      </div>
+
       {sortedRows.length === 0 ? (
         <p className="text-sm text-text-muted">No cars match these filters.</p>
       ) : (
@@ -670,33 +696,76 @@ export function CarsTable({
                   selectedId === car.id ? "bg-highlight" : ""
                 }`}
               >
-                <button
-                  type="button"
-                  onClick={() => toggleExpanded(car.id)}
-                  aria-expanded={isExpanded}
-                  className={`flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-3 py-3 text-left ${
+                <div
+                  className={`flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-3 py-3 sm:grid sm:items-center ${DESKTOP_GRID_COLS} ${
                     isExpanded ? "bg-surface" : ""
                   }`}
                 >
-                  <span
-                    className={`flex-1 sm:flex-none ${isExpanded ? "text-base font-semibold" : "font-medium"} ${
-                      car.is_removed || car.is_struck_out ? "text-text-muted line-through" : "text-text-primary"
-                    }`}
-                  >
-                    {car.make} {car.model}
-                  </span>
+                  {/* Favorite — desktop only, its own cell, interactive
+                      (stopPropagation so it doesn't also toggle the row). */}
+                  <div className="hidden sm:flex sm:items-center" onClick={(e) => e.stopPropagation()}>
+                    <FavoriteToggle
+                      carId={car.id}
+                      isFavorite={car.is_favorite}
+                      className="text-lg leading-none text-series-1 hover:opacity-70 disabled:opacity-60"
+                    />
+                  </div>
 
-                  {/* Desktop only — the rest of the fields, so the row reads
-                      like a table without needing to expand for a look. */}
-                  <div className="hidden flex-1 flex-wrap items-center gap-x-3 gap-y-1 text-sm text-text-secondary sm:flex">
-                    <span>{car.spec ?? "—"}</span>
-                    <span>{car.exterior_color ?? "—"}</span>
-                    <span>{car.interior_color ?? "—"}</span>
-                    <span className="tabular-nums">{car.km != null ? `${car.km.toLocaleString()} km` : "—"}</span>
-                    <span className="tabular-nums">{car.cylinders != null ? `${car.cylinders} cyl` : "—"}</span>
-                    <span>{car.ad_placed_at ?? "—"}</span>
-                    <span className="tabular-nums">{daysListed != null ? `${daysListed}d listed` : "—"}</span>
-                    <span className="tabular-nums">
+                  {/* Status — desktop only, read-only (the toggle lives in
+                      the expanded actions row). */}
+                  <div className="hidden sm:block sm:text-sm sm:text-text-secondary">
+                    {car.is_removed ? (
+                      <span className="text-critical">Removed</span>
+                    ) : car.is_struck_out ? (
+                      <span className="text-critical">Struck out</span>
+                    ) : (
+                      "Active"
+                    )}
+                  </div>
+
+                  {/* display:contents on sm+ so these become direct grid
+                      items of the row above, lining up under the header —
+                      the button itself stays the single click target for
+                      expand/collapse, on mobile and desktop alike. */}
+                  <button
+                    type="button"
+                    onClick={() => toggleExpanded(car.id)}
+                    aria-expanded={isExpanded}
+                    className="flex flex-1 flex-wrap items-center gap-x-3 gap-y-1 text-left sm:contents"
+                  >
+                    <span
+                      className={`flex-1 sm:flex-none ${isExpanded ? "text-base font-semibold" : "font-medium"} ${
+                        car.is_removed || car.is_struck_out ? "text-text-muted line-through" : "text-text-primary"
+                      }`}
+                    >
+                      {car.make} {car.model}
+                    </span>
+                    <span className="tabular-nums text-sm font-medium">
+                      {latest ? formatPrice(latest.price, latest.currency) : "—"}
+                    </span>
+                    <span className="tabular-nums text-sm text-text-secondary">{car.year}</span>
+
+                    {/* Desktop only — the rest of the columns. */}
+                    <span className="hidden sm:block sm:text-sm sm:text-text-secondary">{car.spec ?? "—"}</span>
+                    <span className="hidden sm:block sm:text-sm sm:text-text-secondary">
+                      {car.exterior_color ?? "—"}
+                    </span>
+                    <span className="hidden sm:block sm:text-sm sm:text-text-secondary">
+                      {car.interior_color ?? "—"}
+                    </span>
+                    <span className="hidden sm:tabular-nums sm:block sm:text-sm sm:text-text-secondary">
+                      {car.km != null ? car.km.toLocaleString() : "—"}
+                    </span>
+                    <span className="hidden sm:tabular-nums sm:block sm:text-sm sm:text-text-secondary">
+                      {car.cylinders ?? "—"}
+                    </span>
+                    <span className="hidden sm:block sm:text-sm sm:text-text-secondary">
+                      {car.ad_placed_at ?? "—"}
+                    </span>
+                    <span className="hidden sm:tabular-nums sm:block sm:text-sm sm:text-text-secondary">
+                      {daysListed ?? "—"}
+                    </span>
+                    <span className="hidden sm:tabular-nums sm:block sm:text-sm">
                       {delta == null ? (
                         "—"
                       ) : delta === 0 ? (
@@ -707,17 +776,10 @@ export function CarsTable({
                         <span className="text-critical">▲ {formatPrice(delta, latest!.currency)}</span>
                       )}
                     </span>
-                    {car.is_favorite ? <span className="text-series-1">★ Favorite</span> : null}
-                    {car.is_removed ? <span className="text-critical">Removed</span> : null}
-                    {car.is_struck_out ? <span className="text-critical">Struck out</span> : null}
-                  </div>
 
-                  <span className="tabular-nums text-sm font-medium">
-                    {latest ? formatPrice(latest.price, latest.currency) : "—"}
-                  </span>
-                  <span className="tabular-nums text-sm text-text-secondary">{car.year}</span>
-                  <span className="text-text-muted">{isExpanded ? "▲" : "▼"}</span>
-                </button>
+                    <span className="text-text-muted">{isExpanded ? "▲" : "▼"}</span>
+                  </button>
+                </div>
 
                 {isExpanded ? (
                   <div className="space-y-3 border-t border-border px-3 py-3">

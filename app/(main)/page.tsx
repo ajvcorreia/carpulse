@@ -14,7 +14,7 @@ export default async function DashboardPage({
   ]);
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6 sm:max-w-5xl">
+    <div className="mx-auto max-w-2xl space-y-6 sm:max-w-[1440px]">
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-semibold">Tracked cars</h1>
