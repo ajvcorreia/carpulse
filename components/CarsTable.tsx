@@ -8,7 +8,7 @@ import { FavoriteToggle } from "@/components/FavoriteToggle";
 import { InlineAddPriceForm } from "@/components/InlineAddPriceForm";
 import { EditCarForm } from "@/components/EditCarForm";
 import { markCarOpened, setCarRemovedFlag, setCarStruckOut } from "@/lib/actions";
-import { daysOnDubizzle, formatPrice, totalDelta } from "@/lib/format";
+import { daysListed, formatPrice, totalDelta } from "@/lib/format";
 import { claudeInsightsUrl } from "@/lib/claude";
 import type { CarWithPrices, PricePoint } from "@/lib/types";
 
@@ -42,7 +42,7 @@ type SortKey =
   | "km"
   | "cylinders"
   | "ad_placed_at"
-  | "days_on_dubizzle"
+  | "days_listed"
   | "price"
   | "change";
 type SortDir = "asc" | "desc";
@@ -146,7 +146,7 @@ function compareRows(a: Row, b: Row, key: SortKey): number {
       return compareNullable(a.car.cylinders, b.car.cylinders, (x, y) => x - y);
     case "ad_placed_at":
       return compareNullable(a.car.ad_placed_at, b.car.ad_placed_at, (x, y) => x.localeCompare(y));
-    case "days_on_dubizzle":
+    case "days_listed":
       return compareNullable(a.daysListed, b.daysListed, (x, y) => x - y);
     case "price":
       return compareNullable(a.latest?.price ?? null, b.latest?.price ?? null, (x, y) => x - y);
@@ -231,7 +231,7 @@ const HEADERS: { key: SortKey; label: string }[] = [
   { key: "km", label: "KM" },
   { key: "cylinders", label: "Cyl." },
   { key: "ad_placed_at", label: "Ad placed" },
-  { key: "days_on_dubizzle", label: "Days on Dubizzle" },
+  { key: "days_listed", label: "Days listed" },
   { key: "change", label: "Total change" },
 ];
 
@@ -278,10 +278,10 @@ export function CarsTable({
   const selectedId = useMemo(() => mostRecentlyOpenedId(cars), [cars]);
 
   // Desktop opens the listing in a new tab; mobile navigates in place. On
-  // iOS, target="_blank" hands dubizzle.com links off to the native app
-  // instead of opening a browser tab at all (Universal Links) — desktop has
-  // no such app to hand off to, so a new tab there is unambiguous and more
-  // convenient (keep the dashboard open while comparing listings). Starts
+  // iOS, target="_blank" hands many listing-site links off to their native
+  // app instead of opening a browser tab at all (Universal Links) — desktop
+  // has no such app to hand off to, so a new tab there is unambiguous and
+  // more convenient (keep the dashboard open while comparing listings). Starts
   // false to match the server-rendered HTML, then set on mount — pointer
   // type isn't knowable server-side.
   const [isDesktop, setIsDesktop] = useState(false);
@@ -317,7 +317,7 @@ export function CarsTable({
           points,
           latest: points[points.length - 1] ?? null,
           delta: totalDelta(points),
-          daysListed: daysOnDubizzle(car.ad_placed_at),
+          daysListed: daysListed(car.ad_placed_at),
         };
       }),
     [cars]
@@ -407,7 +407,7 @@ export function CarsTable({
   }, [filters, makeOptions, modelOptions, yearOptions, specOptions, exteriorColorOptions, interiorColorOptions]);
 
   // Listing links navigate in this same tab on mobile (no target="_blank" —
-  // iOS hands dubizzle.com URLs off to the native app when opened that way,
+  // iOS hands many listing-site URLs off to the native app when opened that way,
   // which skips our page/JS entirely, so there was never a reliable "new
   // tab" to track). Marking happens on mousedown/touchstart, before the
   // browser acts on the tap, so it's recorded even though the page is about
@@ -426,7 +426,7 @@ export function CarsTable({
   // usually makes it vanish, via the hide-removed filter) doesn't leave the
   // user having to re-find their place in the list.
   function markRemovedWithConfirm(car: CarWithPrices, nextCardId?: string) {
-    if (window.confirm(`Mark ${car.year} ${car.make} ${car.model} as removed from Dubizzle?`)) {
+    if (window.confirm(`Mark ${car.year} ${car.make} ${car.model} as removed from the listing site?`)) {
       toggleRemoved(car.id, true);
       if (nextCardId) {
         setExpandedIds((ids) => {
@@ -897,7 +897,7 @@ export function CarsTable({
                           )}
                         </div>
 
-                        {car.is_removed ? <p className="text-sm text-critical">Removed from Dubizzle</p> : null}
+                        {car.is_removed ? <p className="text-sm text-critical">Removed from listing site</p> : null}
                         {car.is_struck_out ? (
                           <p className="text-sm text-critical">
                             Struck out{car.strike_out_reason ? `: ${car.strike_out_reason}` : ""}
@@ -930,7 +930,7 @@ export function CarsTable({
                             <dd>{car.ad_placed_at ?? "—"}</dd>
                           </div>
                           <div>
-                            <dt className="text-text-secondary">Days on Dubizzle</dt>
+                            <dt className="text-text-secondary">Days listed</dt>
                             <dd className="tabular-nums">{daysListed ?? "—"}</dd>
                           </div>
                           <div>

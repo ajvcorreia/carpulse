@@ -15,7 +15,7 @@ export function totalDelta(points: PricePoint[]) {
 
 // ad_placed_at is a plain date ("2026-08-05"), so compare calendar days
 // rather than exact timestamps to avoid off-by-one from time-of-day.
-export function daysOnDubizzle(adPlacedAt: string | null): number | null {
+export function daysListed(adPlacedAt: string | null): number | null {
   if (!adPlacedAt) return null;
   const placed = new Date(`${adPlacedAt}T00:00:00Z`);
   if (Number.isNaN(placed.getTime())) return null;

@@ -177,7 +177,7 @@ export async function updateCar(_prevState: unknown, formData: FormData) {
   return { success: true as const };
 }
 
-// Separate from is_removed: is_removed means the ad came down on Dubizzle;
+// Separate from is_removed: is_removed means the ad came down on the listing site;
 // this is for any other reason to set a car aside (wrong spec entered,
 // duplicate, etc.), with an optional free-text note. Used from a plain
 // <form action> embedded directly in the dashboard's expanded card — no

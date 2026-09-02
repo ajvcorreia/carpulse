@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "CarPulse",
-  description: "Track Dubizzle car listing prices over time.",
+  description: "Track car listing prices over time.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

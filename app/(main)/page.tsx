@@ -38,7 +38,7 @@ export default async function DashboardPage({
             name="url"
             type="url"
             required
-            placeholder="Paste a Dubizzle listing URL…"
+            placeholder="Paste a car listing URL…"
             className="flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-series-1"
           />
           <button type="submit" className="rounded-lg bg-series-1 px-4 py-2 text-sm font-medium text-white">
