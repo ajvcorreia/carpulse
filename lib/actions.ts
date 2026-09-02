@@ -123,7 +123,7 @@ export async function createCar(_prevState: unknown, formData: FormData) {
   }
 
   revalidatePath("/");
-  redirect(`/car/${car.id}`);
+  redirect(`/?highlight=${car.id}`);
 }
 
 export async function updateCar(_prevState: unknown, formData: FormData) {
@@ -168,27 +168,15 @@ export async function updateCar(_prevState: unknown, formData: FormData) {
   }
 
   revalidatePath("/");
-  revalidatePath(`/car/${carId}`);
-  redirect(`/car/${carId}`);
-}
-
-export async function setCarRemoved(formData: FormData) {
-  const carId = String(formData.get("car_id") ?? "");
-  const removed = formData.get("removed") === "true";
-
-  if (!carId) return;
-
-  const supabase = createClient();
-  await supabase.from("cars").update({ is_removed: removed }).eq("id", carId);
-
-  revalidatePath("/");
-  revalidatePath(`/car/${carId}`);
-  redirect(`/car/${carId}`);
+  return { success: true as const };
 }
 
 // Separate from is_removed: is_removed means the ad came down on Dubizzle;
 // this is for any other reason to set a car aside (wrong spec entered,
-// duplicate, etc.), with an optional free-text note.
+// duplicate, etc.), with an optional free-text note. Used from a plain
+// <form action> embedded directly in the dashboard's expanded card — no
+// redirect, so the mutation just revalidates "/" and the form's normal
+// post-submit refresh picks up the change in place.
 export async function setCarStruckOut(formData: FormData) {
   const carId = String(formData.get("car_id") ?? "");
   const struckOut = formData.get("struck_out") === "true";
@@ -203,8 +191,6 @@ export async function setCarStruckOut(formData: FormData) {
     .eq("id", carId);
 
   revalidatePath("/");
-  revalidatePath(`/car/${carId}`);
-  redirect(`/car/${carId}`);
 }
 
 // Called directly (not a form action) from OpenListingRedirect, running in
@@ -219,27 +205,24 @@ export async function markCarOpened(carId: string) {
   revalidatePath("/");
 }
 
-// Plain args, no redirect — for toggling is_removed from the dashboard table
-// without leaving it. setCarRemoved (the FormData/redirect version above)
-// stays as-is for the detail page's button.
+// Plain args, no redirect — toggles is_removed from the dashboard card
+// without leaving it.
 export async function setCarRemovedFlag(carId: string, removed: boolean) {
   if (!carId) return;
   const supabase = createClient();
   await supabase.from("cars").update({ is_removed: removed }).eq("id", carId);
   revalidatePath("/");
-  revalidatePath(`/car/${carId}`);
 }
 
 // Plain args, not FormData, and no redirect — called directly from a client
-// component (the dashboard's star toggle and the detail page's favorite
-// button both use this), which sidesteps the form-reset-on-non-redirect
-// issue that plain <form action> bindings hit elsewhere in this app.
+// component (the dashboard's star toggle), which sidesteps the
+// form-reset-on-non-redirect issue that plain <form action> bindings hit
+// elsewhere in this app.
 export async function setCarFavorite(carId: string, favorite: boolean) {
   if (!carId) return;
   const supabase = createClient();
   await supabase.from("cars").update({ is_favorite: favorite }).eq("id", carId);
   revalidatePath("/");
-  revalidatePath(`/car/${carId}`);
 }
 
 export async function addPrice(_prevState: unknown, formData: FormData) {
@@ -261,13 +244,12 @@ export async function addPrice(_prevState: unknown, formData: FormData) {
   }
 
   revalidatePath("/");
-  revalidatePath(`/car/${carId}`);
-  redirect(`/car/${carId}`);
+  redirect(`/?highlight=${carId}`);
 }
 
-// Same as addPrice but for the dashboard's mobile card view, which adds a
-// price without navigating away — a redirect to the detail page would defeat
-// the point of doing this inline.
+// Same as addPrice but for the dashboard card view, which adds a price
+// without navigating away — a redirect would defeat the point of doing this
+// inline.
 export async function addPriceInline(_prevState: unknown, formData: FormData) {
   const carId = String(formData.get("car_id") ?? "");
   const price = parseNumber(formData.get("price"));
@@ -287,7 +269,6 @@ export async function addPriceInline(_prevState: unknown, formData: FormData) {
   }
 
   revalidatePath("/");
-  revalidatePath(`/car/${carId}`);
   return { success: true as const };
 }
 
@@ -315,7 +296,6 @@ export async function deletePrice(formData: FormData) {
   }
 
   revalidatePath("/");
-  revalidatePath(`/car/${carId}`);
   return { success: true as const, deleted };
 }
 
@@ -340,7 +320,6 @@ export async function undoDeletePrice(formData: FormData) {
   }
 
   revalidatePath("/");
-  revalidatePath(`/car/${carId}`);
   return { success: true as const };
 }
 

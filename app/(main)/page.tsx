@@ -1,12 +1,20 @@
 import Link from "next/link";
 import { CarsTable } from "@/components/CarsTable";
-import { getCarsWithPrices } from "@/lib/data";
+import { getCarsWithPrices, getCarFieldOptions } from "@/lib/data";
 
-export default async function DashboardPage() {
-  const cars = await getCarsWithPrices();
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ highlight?: string }>;
+}) {
+  const [cars, options, { highlight }] = await Promise.all([
+    getCarsWithPrices(),
+    getCarFieldOptions(),
+    searchParams,
+  ]);
 
   return (
-    <div className="mx-auto max-w-[1600px] space-y-6">
+    <div className="mx-auto max-w-2xl space-y-6">
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-semibold">Tracked cars</h1>
@@ -39,7 +47,7 @@ export default async function DashboardPage() {
         </form>
       </div>
 
-      <CarsTable cars={cars} />
+      <CarsTable cars={cars} options={options} highlightId={highlight} />
     </div>
   );
 }

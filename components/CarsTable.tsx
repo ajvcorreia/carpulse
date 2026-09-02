@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { Sparkline } from "@/components/Sparkline";
+import { PriceChart } from "@/components/PriceChart";
+import { PriceHistoryList } from "@/components/PriceHistoryList";
 import { FavoriteToggle } from "@/components/FavoriteToggle";
 import { InlineAddPriceForm } from "@/components/InlineAddPriceForm";
-import { markCarOpened, setCarRemovedFlag } from "@/lib/actions";
+import { EditCarForm } from "@/components/EditCarForm";
+import { markCarOpened, setCarRemovedFlag, setCarStruckOut } from "@/lib/actions";
 import { daysOnDubizzle, formatPrice, latestDelta } from "@/lib/format";
 import { claudeInsightsUrl } from "@/lib/claude";
 import type { CarWithPrices, PricePoint } from "@/lib/types";
@@ -53,6 +54,8 @@ type Row = {
   delta: number | null;
   daysListed: number | null;
 };
+
+type FieldOptions = { makes: string[]; specs: string[]; modelsByMake: Record<string, string[]> };
 
 type Filters = {
   make: string;
@@ -213,7 +216,7 @@ function optionsFor<T>(
 }
 
 const HEADERS: { key: SortKey; label: string }[] = [
-  { key: "favorite", label: "★" },
+  { key: "favorite", label: "Favorite" },
   { key: "removed", label: "Status" },
   { key: "car", label: "Car" },
   { key: "price", label: "Latest price" },
@@ -230,6 +233,8 @@ const HEADERS: { key: SortKey; label: string }[] = [
 
 const selectClass =
   "rounded-lg border border-border bg-surface px-2 py-1.5 text-sm outline-none focus:border-series-1";
+const actionButtonClass =
+  "inline-flex items-center rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text-secondary no-underline hover:border-series-1 hover:text-text-primary";
 
 function FilterField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -240,15 +245,23 @@ function FilterField({ label, children }: { label: string; children: React.React
   );
 }
 
-export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
+export function CarsTable({
+  cars,
+  options,
+  highlightId,
+}: {
+  cars: CarWithPrices[];
+  options: FieldOptions;
+  highlightId?: string;
+}) {
   const router = useRouter();
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
-  // On narrow screens the table becomes a list of collapsed rows (make,
-  // model, price, year only) that expand in place to show everything else —
-  // avoids either a 14-column horizontal scroll or a second detail-page trip.
+  // Cards start collapsed to just make/model/price/year; expanding one shows
+  // everything else in place — no separate detail page to navigate to.
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [editingIds, setEditingIds] = useState<Set<string>>(new Set());
   // Which row's listing was last opened — highlighted so it's obvious which
   // one you were looking at when you come back. Derived from the cars prop
   // (server data), not local/client storage.
@@ -272,6 +285,18 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
     mq.addEventListener("change", handleChange);
     return () => mq.removeEventListener("change", handleChange);
   }, []);
+
+  // Coming from "?highlight=<id>" (just created a car, resolved a duplicate,
+  // or added a price for an already-tracked one) — expand that card and
+  // scroll to it, then drop the query param so a later refresh doesn't
+  // re-trigger the scroll.
+  useEffect(() => {
+    if (!highlightId) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setExpandedIds((ids) => new Set(ids).add(highlightId));
+    document.getElementById(`car-${highlightId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    router.replace("/");
+  }, [highlightId, router]);
 
   const rows = useMemo<Row[]>(
     () =>
@@ -371,15 +396,12 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
     }
   }, [filters, makeOptions, modelOptions, yearOptions, specOptions, exteriorColorOptions, interiorColorOptions]);
 
-  // Listing links navigate in this same tab (no target="_blank" — iOS
-  // hands dubizzle.com URLs off to the native app when opened that way,
+  // Listing links navigate in this same tab on mobile (no target="_blank" —
+  // iOS hands dubizzle.com URLs off to the native app when opened that way,
   // which skips our page/JS entirely, so there was never a reliable "new
   // tab" to track). Marking happens on mousedown/touchstart, before the
   // browser acts on the tap, so it's recorded even though the page is about
-  // to navigate away. Coming back (the browser's back button) is either a
-  // fresh server render — cars already reflects last_opened_at — or a
-  // bfcache restore of the pre-navigation render, which already applied the
-  // highlight via this same router.refresh() call.
+  // to navigate away.
   function markOpened(carId: string) {
     markCarOpened(carId).then(() => router.refresh());
   }
@@ -390,9 +412,9 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
 
   // Only confirming the removed direction — undoing it back to active needs
   // no confirmation, since that's not the accidental-tap-prone one.
-  // On the mobile card view, nextCardId auto-expands the next row so marking
-  // one removed (which usually makes it vanish, via the hide-removed filter)
-  // doesn't leave the user having to re-find their place in the list.
+  // nextCardId auto-expands the next card so marking one removed (which
+  // usually makes it vanish, via the hide-removed filter) doesn't leave the
+  // user having to re-find their place in the list.
   function markRemovedWithConfirm(car: CarWithPrices, nextCardId?: string) {
     if (window.confirm(`Mark ${car.year} ${car.make} ${car.model} as removed from Dubizzle?`)) {
       toggleRemoved(car.id, true);
@@ -412,6 +434,18 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
       const next = new Set(ids);
       if (next.has(carId)) next.delete(carId);
       else next.add(carId);
+      return next;
+    });
+  }
+
+  function startEditing(carId: string) {
+    setEditingIds((ids) => new Set(ids).add(carId));
+  }
+
+  function stopEditing(carId: string) {
+    setEditingIds((ids) => {
+      const next = new Set(ids);
+      next.delete(carId);
       return next;
     });
   }
@@ -592,7 +626,7 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
         ) : null}
       </div>
 
-      <div className="flex flex-wrap items-end gap-2 sm:hidden">
+      <div className="flex flex-wrap items-end gap-2">
         <FilterField label="Sort by">
           <select
             value={sortKey ?? ""}
@@ -621,139 +655,17 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
       {sortedRows.length === 0 ? (
         <p className="text-sm text-text-muted">No cars match these filters.</p>
       ) : (
-        <>
-        <div className="hidden overflow-x-auto rounded-lg border border-border sm:block">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-text-secondary">
-                <th className="px-3 py-2 font-medium">Details</th>
-                {HEADERS.map((h) => (
-                  <th key={h.key} className="px-3 py-2 font-medium">
-                    <button
-                      type="button"
-                      onClick={() => toggleSort(h.key)}
-                      className="inline-flex items-center gap-1 hover:text-text-primary"
-                    >
-                      {h.label}
-                      {sortKey === h.key ? (
-                        <span className="text-xs text-series-1">{sortDir === "asc" ? "▲" : "▼"}</span>
-                      ) : null}
-                    </button>
-                  </th>
-                ))}
-                <th className="px-3 py-2 font-medium">Trend</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sortedRows.map(({ car, points, latest, delta, daysListed }) => (
-                <tr
-                  key={car.id}
-                  className={`border-b border-border last:border-0 ${
-                    car.is_removed || car.is_struck_out ? "opacity-50 line-through" : ""
-                  } ${selectedId === car.id ? "bg-highlight" : ""}`}
-                >
-                  <td className="px-3 py-2">
-                    <Link
-                      href={`/car/${car.id}`}
-                      title="View price history"
-                      className="inline-flex items-center rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text-secondary no-underline hover:border-series-1 hover:text-text-primary"
-                    >
-                      Show details
-                    </Link>
-                  </td>
-                  <td className="px-3 py-2">
-                    <FavoriteToggle
-                      carId={car.id}
-                      isFavorite={car.is_favorite}
-                      className="text-2xl leading-none text-series-1 hover:opacity-70 disabled:opacity-60"
-                    />
-                  </td>
-                  <td className="px-3 py-2">
-                    {car.is_removed ? (
-                      <button
-                        type="button"
-                        onClick={() => toggleRemoved(car.id, false)}
-                        title="Click to mark as active again"
-                        className="inline-flex items-center rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text-secondary no-underline hover:border-series-1 hover:text-text-primary"
-                      >
-                        Mark active
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => markRemovedWithConfirm(car)}
-                        title="Mark as removed from Dubizzle"
-                        className="inline-flex items-center rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text-secondary no-underline hover:border-series-1 hover:text-text-primary"
-                      >
-                        Mark removed
-                      </button>
-                    )}
-                  </td>
-                  <td className="px-3 py-2">
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                      <a
-                        href={car.url}
-                        target={isDesktop ? "_blank" : undefined}
-                        rel={isDesktop ? "noreferrer" : undefined}
-                        title={isDesktop ? "Open the Dubizzle listing in a new tab" : "Open the Dubizzle listing"}
-                        onMouseDown={() => markOpened(car.id)}
-                        onTouchStart={() => markOpened(car.id)}
-                        className="font-medium text-text-primary hover:underline"
-                      >
-                        {car.make} {car.model}
-                        {isDesktop ? " ↗" : null}
-                      </a>
-                      {car.is_struck_out ? (
-                        <span
-                          title={car.strike_out_reason ?? undefined}
-                          className="rounded-full bg-critical/10 px-1.5 py-0.5 text-xs font-medium text-critical no-underline"
-                        >
-                          Struck out
-                        </span>
-                      ) : null}
-                    </div>
-                  </td>
-                  <td className="tabular-nums px-3 py-2 font-medium">
-                    {latest ? formatPrice(latest.price, latest.currency) : "—"}
-                  </td>
-                  <td className="tabular-nums px-3 py-2 text-text-secondary">{car.year}</td>
-                  <td className="px-3 py-2 text-text-secondary">{car.spec ?? "—"}</td>
-                  <td className="px-3 py-2 text-text-secondary">{car.exterior_color ?? "—"}</td>
-                  <td className="px-3 py-2 text-text-secondary">{car.interior_color ?? "—"}</td>
-                  <td className="tabular-nums px-3 py-2 text-text-secondary">
-                    {car.km != null ? car.km.toLocaleString() : "—"}
-                  </td>
-                  <td className="tabular-nums px-3 py-2 text-text-secondary">{car.cylinders ?? "—"}</td>
-                  <td className="px-3 py-2 text-text-secondary">{car.ad_placed_at ?? "—"}</td>
-                  <td className="tabular-nums px-3 py-2 text-text-secondary">{daysListed ?? "—"}</td>
-                  <td className="tabular-nums px-3 py-2">
-                    {delta == null ? (
-                      <span className="text-text-muted">—</span>
-                    ) : delta === 0 ? (
-                      <span className="text-text-secondary">No change</span>
-                    ) : delta < 0 ? (
-                      <span className="text-good">▼ {formatPrice(Math.abs(delta), latest!.currency)}</span>
-                    ) : (
-                      <span className="text-critical">▲ {formatPrice(delta, latest!.currency)}</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2">
-                    <Sparkline points={points} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="space-y-2 sm:hidden" data-testid="mobile-car-list">
+        <div className="space-y-2" data-testid="car-list">
           {sortedRows.map(({ car, points, latest, delta, daysListed }, index) => {
             const isExpanded = expandedIds.has(car.id);
+            const isEditing = editingIds.has(car.id);
             const nextCardId = sortedRows[index + 1]?.car.id;
+
             return (
               <div
                 key={car.id}
-                data-testid="mobile-car-card"
+                id={`car-${car.id}`}
+                data-testid="car-card"
                 className={`overflow-hidden rounded-lg border border-border ${
                   selectedId === car.id ? "bg-highlight" : ""
                 }`}
@@ -780,120 +692,166 @@ export function CarsTable({ cars }: { cars: CarWithPrices[] }) {
 
                 {isExpanded ? (
                   <div className="space-y-3 border-t border-border px-3 py-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Link
-                        href={`/car/${car.id}`}
-                        className="inline-flex items-center rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text-secondary no-underline hover:border-series-1 hover:text-text-primary"
-                      >
-                        Show details
-                      </Link>
-                      {car.is_removed ? (
-                        <button
-                          type="button"
-                          onClick={() => toggleRemoved(car.id, false)}
-                          className="inline-flex items-center rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text-secondary hover:border-series-1 hover:text-text-primary"
-                        >
-                          Mark active
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => markRemovedWithConfirm(car, nextCardId)}
-                          className="inline-flex items-center rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text-secondary hover:border-series-1 hover:text-text-primary"
-                        >
-                          Mark removed
-                        </button>
-                      )}
-                      <FavoriteToggle
-                        carId={car.id}
-                        isFavorite={car.is_favorite}
-                        className="inline-flex items-center rounded-lg border border-border bg-surface px-3 py-1.5 text-xl leading-none text-series-1 hover:opacity-70 disabled:opacity-60"
+                    {isEditing ? (
+                      <EditCarForm
+                        car={car}
+                        options={options}
+                        onSaved={() => {
+                          stopEditing(car.id);
+                          router.refresh();
+                        }}
+                        onCancel={() => stopEditing(car.id)}
                       />
-                      <a
-                        href={car.url}
-                        target={isDesktop ? "_blank" : undefined}
-                        rel={isDesktop ? "noreferrer" : undefined}
-                        onMouseDown={() => markOpened(car.id)}
-                        onTouchStart={() => markOpened(car.id)}
-                        className="inline-flex items-center rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-series-1 no-underline hover:border-series-1"
-                      >
-                        Open listing{isDesktop ? " ↗" : ""}
-                      </a>
-                      <a
-                        href={claudeInsightsUrl(car, latest ? formatPrice(latest.price, latest.currency) : null)}
-                        target="_blank"
-                        rel="noreferrer"
-                        title="Ask Claude about this engine/trim: reliability, common issues, maintenance costs"
-                        className="inline-flex items-center rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text-secondary no-underline hover:border-series-1 hover:text-text-primary"
-                      >
-                        Ask Claude
-                      </a>
-                    </div>
-
-                    {car.is_struck_out ? (
-                      <p className="text-sm text-critical">
-                        Struck out{car.strike_out_reason ? `: ${car.strike_out_reason}` : ""}
-                      </p>
-                    ) : null}
-
-                    <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                      <div>
-                        <dt className="text-text-secondary">Spec</dt>
-                        <dd>{car.spec ?? "—"}</dd>
-                      </div>
-                      <div>
-                        <dt className="text-text-secondary">Ext. color</dt>
-                        <dd>{car.exterior_color ?? "—"}</dd>
-                      </div>
-                      <div>
-                        <dt className="text-text-secondary">Int. color</dt>
-                        <dd>{car.interior_color ?? "—"}</dd>
-                      </div>
-                      <div>
-                        <dt className="text-text-secondary">KM</dt>
-                        <dd className="tabular-nums">{car.km != null ? car.km.toLocaleString() : "—"}</dd>
-                      </div>
-                      <div>
-                        <dt className="text-text-secondary">Cylinders</dt>
-                        <dd className="tabular-nums">{car.cylinders ?? "—"}</dd>
-                      </div>
-                      <div>
-                        <dt className="text-text-secondary">Ad placed</dt>
-                        <dd>{car.ad_placed_at ?? "—"}</dd>
-                      </div>
-                      <div>
-                        <dt className="text-text-secondary">Days on Dubizzle</dt>
-                        <dd className="tabular-nums">{daysListed ?? "—"}</dd>
-                      </div>
-                      <div>
-                        <dt className="text-text-secondary">Change</dt>
-                        <dd className="tabular-nums">
-                          {delta == null ? (
-                            "—"
-                          ) : delta === 0 ? (
-                            "No change"
-                          ) : delta < 0 ? (
-                            <span className="text-good">▼ {formatPrice(Math.abs(delta), latest!.currency)}</span>
+                    ) : (
+                      <>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button type="button" onClick={() => startEditing(car.id)} className={actionButtonClass}>
+                            Edit details
+                          </button>
+                          {car.is_removed ? (
+                            <button
+                              type="button"
+                              onClick={() => toggleRemoved(car.id, false)}
+                              className={actionButtonClass}
+                            >
+                              Mark active
+                            </button>
                           ) : (
-                            <span className="text-critical">▲ {formatPrice(delta, latest!.currency)}</span>
+                            <button
+                              type="button"
+                              onClick={() => markRemovedWithConfirm(car, nextCardId)}
+                              className={actionButtonClass}
+                            >
+                              Mark removed
+                            </button>
                           )}
-                        </dd>
-                      </div>
-                    </dl>
+                          <FavoriteToggle
+                            carId={car.id}
+                            isFavorite={car.is_favorite}
+                            className="inline-flex items-center rounded-lg border border-border bg-surface px-3 py-1.5 text-xl leading-none text-series-1 hover:opacity-70 disabled:opacity-60"
+                          />
+                          <a
+                            href={car.url}
+                            target={isDesktop ? "_blank" : undefined}
+                            rel={isDesktop ? "noreferrer" : undefined}
+                            onMouseDown={() => markOpened(car.id)}
+                            onTouchStart={() => markOpened(car.id)}
+                            className={`${actionButtonClass} text-series-1`}
+                          >
+                            Open listing{isDesktop ? " ↗" : ""}
+                          </a>
+                          <a
+                            href={claudeInsightsUrl(car, latest ? formatPrice(latest.price, latest.currency) : null)}
+                            target="_blank"
+                            rel="noreferrer"
+                            title="Ask Claude about this engine/trim: reliability, common issues, maintenance costs"
+                            className={actionButtonClass}
+                          >
+                            Ask Claude
+                          </a>
+                        </div>
 
-                    <div className="space-y-1">
-                      <h3 className="text-xs font-medium text-text-secondary">Add a new price update</h3>
-                      <InlineAddPriceForm carId={car.id} />
-                    </div>
+                        <div className="flex flex-wrap items-end gap-2">
+                          {car.is_struck_out ? (
+                            <form action={setCarStruckOut} className="flex items-end gap-2">
+                              <input type="hidden" name="car_id" value={car.id} />
+                              <input type="hidden" name="struck_out" value="false" />
+                              <button type="submit" className={actionButtonClass}>
+                                Remove strike-out
+                              </button>
+                            </form>
+                          ) : (
+                            <form action={setCarStruckOut} className="flex flex-wrap items-end gap-2">
+                              <input type="hidden" name="car_id" value={car.id} />
+                              <input type="hidden" name="struck_out" value="true" />
+                              <div className="space-y-1">
+                                <label htmlFor={`reason-${car.id}`} className="text-xs text-text-secondary">
+                                  Strike-out reason (optional)
+                                </label>
+                                <input
+                                  id={`reason-${car.id}`}
+                                  name="reason"
+                                  placeholder="e.g. incorrect spec"
+                                  className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm outline-none focus:border-series-1"
+                                />
+                              </div>
+                              <button type="submit" className={actionButtonClass}>
+                                Strike out this car
+                              </button>
+                            </form>
+                          )}
+                        </div>
 
-                    <Sparkline points={points} />
+                        {car.is_removed ? <p className="text-sm text-critical">Removed from Dubizzle</p> : null}
+                        {car.is_struck_out ? (
+                          <p className="text-sm text-critical">
+                            Struck out{car.strike_out_reason ? `: ${car.strike_out_reason}` : ""}
+                          </p>
+                        ) : null}
+
+                        <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
+                          <div>
+                            <dt className="text-text-secondary">Spec</dt>
+                            <dd>{car.spec ?? "—"}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-text-secondary">Ext. color</dt>
+                            <dd>{car.exterior_color ?? "—"}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-text-secondary">Int. color</dt>
+                            <dd>{car.interior_color ?? "—"}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-text-secondary">KM</dt>
+                            <dd className="tabular-nums">{car.km != null ? car.km.toLocaleString() : "—"}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-text-secondary">Cylinders</dt>
+                            <dd className="tabular-nums">{car.cylinders ?? "—"}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-text-secondary">Ad placed</dt>
+                            <dd>{car.ad_placed_at ?? "—"}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-text-secondary">Days on Dubizzle</dt>
+                            <dd className="tabular-nums">{daysListed ?? "—"}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-text-secondary">Change</dt>
+                            <dd className="tabular-nums">
+                              {delta == null ? (
+                                "—"
+                              ) : delta === 0 ? (
+                                "No change"
+                              ) : delta < 0 ? (
+                                <span className="text-good">
+                                  ▼ {formatPrice(Math.abs(delta), latest!.currency)}
+                                </span>
+                              ) : (
+                                <span className="text-critical">▲ {formatPrice(delta, latest!.currency)}</span>
+                              )}
+                            </dd>
+                          </div>
+                        </dl>
+
+                        <PriceChart points={points} />
+
+                        <div className="space-y-1">
+                          <h3 className="text-xs font-medium text-text-secondary">Add a new price update</h3>
+                          <InlineAddPriceForm carId={car.id} />
+                        </div>
+
+                        <PriceHistoryList carId={car.id} points={points} />
+                      </>
+                    )}
                   </div>
                 ) : null}
               </div>
             );
           })}
         </div>
-        </>
       )}
     </div>
   );

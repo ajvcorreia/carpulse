@@ -39,8 +39,8 @@ export default async function AddPage({
           </h1>
           <p className="text-sm text-text-secondary">
             Already tracked since {new Date(existing.created_at).toLocaleDateString()}.{" "}
-            <Link href={`/car/${existing.id}`} className="underline">
-              View full history
+            <Link href={`/?highlight=${existing.id}`} className="underline">
+              View on dashboard
             </Link>
           </p>
         </div>

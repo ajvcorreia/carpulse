@@ -77,7 +77,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (!data) return NextResponse.json({ error: "Car not found." }, { status: 404 });
 
   revalidatePath("/");
-  revalidatePath(`/car/${id}`);
 
   return NextResponse.json({ car: data });
 }

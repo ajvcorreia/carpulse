@@ -127,7 +127,7 @@ export function NewCarForm({ url, options }: { url: string; options: FieldOption
           <div className="space-y-3 rounded-lg border border-border bg-surface p-3 text-sm">
             <p>
               This looks like it might already be tracked as{" "}
-              <Link href={`/car/${duplicate.id}`} className="text-series-1 hover:underline">
+              <Link href={`/?highlight=${duplicate.id}`} className="text-series-1 hover:underline">
                 {duplicate.year} {duplicate.make} {duplicate.model}
               </Link>{" "}
               — same make/model/colors, KM {duplicate.km.toLocaleString()}. Probably the same car
@@ -135,7 +135,7 @@ export function NewCarForm({ url, options }: { url: string; options: FieldOption
             </p>
             <div className="flex flex-wrap gap-2">
               <Link
-                href={`/car/${duplicate.id}`}
+                href={`/?highlight=${duplicate.id}`}
                 className="rounded-lg border border-border bg-surface px-4 py-2 text-sm text-text-secondary hover:border-series-1 hover:text-text-primary"
               >
                 View existing car instead

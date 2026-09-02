@@ -42,7 +42,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
 
   revalidatePath("/");
-  revalidatePath(`/car/${id}`);
 
   return NextResponse.json({ price: data }, { status: 201 });
 }

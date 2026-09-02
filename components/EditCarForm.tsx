@@ -28,11 +28,27 @@ const inputClass =
 
 type FieldOptions = { makes: string[]; specs: string[]; modelsByMake: Record<string, string[]> };
 
-export function EditCarForm({ car, options }: { car: Car; options: FieldOptions }) {
+export function EditCarForm({
+  car,
+  options,
+  onSaved,
+  onCancel,
+}: {
+  car: Car;
+  options: FieldOptions;
+  onSaved?: () => void;
+  onCancel?: () => void;
+}) {
   const formRef = useRef<HTMLFormElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [make, setMake] = useState(car.make);
+
+  // Suffixed with the car id so multiple cards can each embed this form (and
+  // its datalists) at once without colliding on duplicate element ids.
+  const makesListId = `makes-options-${car.id}`;
+  const modelsListId = `models-options-${car.id}`;
+  const specsListId = `specs-options-${car.id}`;
 
   // Narrow model suggestions to the chosen make; an unrecognized (or empty)
   // make falls back to every model seen across all cars.
@@ -50,7 +66,11 @@ export function EditCarForm({ car, options }: { car: Car; options: FieldOptions 
     setError(null);
     startTransition(async () => {
       const result = await updateCar(null, formData);
-      if (result?.error) setError(result.error);
+      if (result?.error) {
+        setError(result.error);
+        return;
+      }
+      onSaved?.();
     });
   }
 
@@ -58,27 +78,34 @@ export function EditCarForm({ car, options }: { car: Car; options: FieldOptions 
     <form ref={formRef} onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <input type="hidden" name="car_id" value={car.id} />
 
-      <Field id="url" label="Listing URL">
-        <input id="url" name="url" type="url" required defaultValue={car.url} className={inputClass} />
+      <Field id={`url-${car.id}`} label="Listing URL">
+        <input id={`url-${car.id}`} name="url" type="url" required defaultValue={car.url} className={inputClass} />
       </Field>
       <div className="hidden sm:block" />
-      <Field id="make" label="Make">
+      <Field id={`make-${car.id}`} label="Make">
         <input
-          id="make"
+          id={`make-${car.id}`}
           name="make"
-          list="makes-options"
+          list={makesListId}
           required
           value={make}
           onChange={(e) => setMake(e.target.value)}
           className={inputClass}
         />
       </Field>
-      <Field id="model" label="Model">
-        <input id="model" name="model" list="models-options" required defaultValue={car.model} className={inputClass} />
-      </Field>
-      <Field id="year" label="Year">
+      <Field id={`model-${car.id}`} label="Model">
         <input
-          id="year"
+          id={`model-${car.id}`}
+          name="model"
+          list={modelsListId}
+          required
+          defaultValue={car.model}
+          className={inputClass}
+        />
+      </Field>
+      <Field id={`year-${car.id}`} label="Year">
+        <input
+          id={`year-${car.id}`}
           name="year"
           type="number"
           required
@@ -88,12 +115,12 @@ export function EditCarForm({ car, options }: { car: Car; options: FieldOptions 
           className={inputClass}
         />
       </Field>
-      <Field id="km" label="KM">
-        <input id="km" name="km" type="number" min={0} defaultValue={car.km ?? ""} className={inputClass} />
+      <Field id={`km-${car.id}`} label="KM">
+        <input id={`km-${car.id}`} name="km" type="number" min={0} defaultValue={car.km ?? ""} className={inputClass} />
       </Field>
-      <Field id="cylinders" label="Cylinders">
+      <Field id={`cylinders-${car.id}`} label="Cylinders">
         <input
-          id="cylinders"
+          id={`cylinders-${car.id}`}
           name="cylinders"
           type="number"
           min={1}
@@ -102,28 +129,34 @@ export function EditCarForm({ car, options }: { car: Car; options: FieldOptions 
           className={inputClass}
         />
       </Field>
-      <Field id="spec" label="Spec">
-        <input id="spec" name="spec" list="specs-options" defaultValue={car.spec ?? ""} className={inputClass} />
-      </Field>
-      <Field id="exterior_color" label="Exterior color">
+      <Field id={`spec-${car.id}`} label="Spec">
         <input
-          id="exterior_color"
+          id={`spec-${car.id}`}
+          name="spec"
+          list={specsListId}
+          defaultValue={car.spec ?? ""}
+          className={inputClass}
+        />
+      </Field>
+      <Field id={`exterior_color-${car.id}`} label="Exterior color">
+        <input
+          id={`exterior_color-${car.id}`}
           name="exterior_color"
           defaultValue={car.exterior_color ?? ""}
           className={inputClass}
         />
       </Field>
-      <Field id="interior_color" label="Interior color">
+      <Field id={`interior_color-${car.id}`} label="Interior color">
         <input
-          id="interior_color"
+          id={`interior_color-${car.id}`}
           name="interior_color"
           defaultValue={car.interior_color ?? ""}
           className={inputClass}
         />
       </Field>
-      <Field id="ad_placed_at" label="Ad placement date">
+      <Field id={`ad_placed_at-${car.id}`} label="Ad placement date">
         <input
-          id="ad_placed_at"
+          id={`ad_placed_at-${car.id}`}
           name="ad_placed_at"
           type="date"
           defaultValue={car.ad_placed_at ?? ""}
@@ -141,20 +174,29 @@ export function EditCarForm({ car, options }: { car: Car; options: FieldOptions 
           >
             {pending ? "Saving…" : "Save changes"}
           </button>
+          {onCancel ? (
+            <button
+              type="button"
+              onClick={onCancel}
+              className="rounded-lg border border-border bg-surface px-4 py-2 text-sm text-text-secondary hover:border-series-1 hover:text-text-primary"
+            >
+              Cancel
+            </button>
+          ) : null}
         </div>
       </div>
 
-      <datalist id="makes-options">
+      <datalist id={makesListId}>
         {options.makes.map((m) => (
           <option key={m} value={m} />
         ))}
       </datalist>
-      <datalist id="models-options">
+      <datalist id={modelsListId}>
         {modelOptions.map((m) => (
           <option key={m} value={m} />
         ))}
       </datalist>
-      <datalist id="specs-options">
+      <datalist id={specsListId}>
         {options.specs.map((s) => (
           <option key={s} value={s} />
         ))}

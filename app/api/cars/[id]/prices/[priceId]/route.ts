@@ -21,7 +21,6 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
   if (!data) return NextResponse.json({ error: "Price entry not found." }, { status: 404 });
 
   revalidatePath("/");
-  revalidatePath(`/car/${id}`);
 
   return NextResponse.json({ deleted: data });
 }
