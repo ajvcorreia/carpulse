@@ -674,17 +674,44 @@ export function CarsTable({
                   type="button"
                   onClick={() => toggleExpanded(car.id)}
                   aria-expanded={isExpanded}
-                  className={`flex w-full items-center gap-3 px-3 py-3 text-left ${
+                  className={`flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-3 py-3 text-left ${
                     isExpanded ? "bg-surface" : ""
                   }`}
                 >
                   <span
-                    className={`flex-1 ${isExpanded ? "text-base font-semibold" : "font-medium"} ${
+                    className={`flex-1 sm:flex-none ${isExpanded ? "text-base font-semibold" : "font-medium"} ${
                       car.is_removed || car.is_struck_out ? "text-text-muted line-through" : "text-text-primary"
                     }`}
                   >
                     {car.make} {car.model}
                   </span>
+
+                  {/* Desktop only — the rest of the fields, so the row reads
+                      like a table without needing to expand for a look. */}
+                  <div className="hidden flex-1 flex-wrap items-center gap-x-3 gap-y-1 text-sm text-text-secondary sm:flex">
+                    <span>{car.spec ?? "—"}</span>
+                    <span>{car.exterior_color ?? "—"}</span>
+                    <span>{car.interior_color ?? "—"}</span>
+                    <span className="tabular-nums">{car.km != null ? `${car.km.toLocaleString()} km` : "—"}</span>
+                    <span className="tabular-nums">{car.cylinders != null ? `${car.cylinders} cyl` : "—"}</span>
+                    <span>{car.ad_placed_at ?? "—"}</span>
+                    <span className="tabular-nums">{daysListed != null ? `${daysListed}d listed` : "—"}</span>
+                    <span className="tabular-nums">
+                      {delta == null ? (
+                        "—"
+                      ) : delta === 0 ? (
+                        "No change"
+                      ) : delta < 0 ? (
+                        <span className="text-good">▼ {formatPrice(Math.abs(delta), latest!.currency)}</span>
+                      ) : (
+                        <span className="text-critical">▲ {formatPrice(delta, latest!.currency)}</span>
+                      )}
+                    </span>
+                    {car.is_favorite ? <span className="text-series-1">★ Favorite</span> : null}
+                    {car.is_removed ? <span className="text-critical">Removed</span> : null}
+                    {car.is_struck_out ? <span className="text-critical">Struck out</span> : null}
+                  </div>
+
                   <span className="tabular-nums text-sm font-medium">
                     {latest ? formatPrice(latest.price, latest.currency) : "—"}
                   </span>
