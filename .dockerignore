@@ -1,0 +1,8 @@
+node_modules
+.next
+.git
+.env*
+!.env.local.example
+npm-debug.log*
+supabase/.branches
+supabase/.temp

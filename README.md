@@ -32,3 +32,24 @@ npm run dev
 Copy `.env.local.example` to `.env.local` and fill in the values `supabase start`
 prints (API URL + anon key). If you'd rather point at a hosted Supabase project
 instead of running one locally, use its project URL and anon key the same way.
+
+## Running with Docker
+
+`NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` get baked into
+the client bundle at build time (that's how Next.js handles `NEXT_PUBLIC_*`
+vars), not read at container startup — so they're build args, not `docker run
+-e`. `CARPULSE_API_KEY` isn't `NEXT_PUBLIC_*`; it's read server-side per
+request, so that one *is* a normal runtime env var.
+
+```bash
+docker build \
+  --build-arg NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co \
+  --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key \
+  -t carpulse .
+
+docker run -p 3000:3000 -e CARPULSE_API_KEY=your-api-key carpulse
+```
+
+Because the Supabase URL/key are baked in, an image only really works against
+the one Supabase project it was built with — build your own rather than
+expecting a pre-built image to point at your database.
