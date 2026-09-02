@@ -35,6 +35,22 @@ Requires Node 22+ (for `node:sqlite`). Copy `.env.local.example` to
 
 ## Running with Docker
 
+Pre-built images are published to Docker Hub as `ajvcorreia/carpulse` on
+every push to `master` (see `.github/workflows/docker-publish.yml`).
+
+### Docker Compose
+
+```bash
+echo "CARPULSE_API_KEY=your-api-key" > .env
+docker compose up -d
+```
+
+Pulls `ajvcorreia/carpulse:latest` and stores the database in the
+`carpulse-data` named volume. To build from source instead, uncomment
+`build: .` in `docker-compose.yml`.
+
+### Plain `docker run`
+
 ```bash
 docker build -t carpulse .
 
@@ -45,6 +61,6 @@ docker run -p 3000:3000 \
 ```
 
 The `-v carpulse-data:/app/data` volume is what makes the database survive
-the container being recreated — without it, `docker run` again starts from
-an empty database. No project-specific build args needed: the same image
-works for anyone, pointed at whatever volume they mount.
+the container being recreated — without it, restarting the container starts
+from an empty database. No project-specific build args needed: the same
+image works for anyone, pointed at whatever volume they mount.

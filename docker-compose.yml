@@ -1,0 +1,15 @@
+services:
+  carpulse:
+    image: ajvcorreia/carpulse:latest
+    # Uncomment to build from source instead of pulling the published image:
+    # build: .
+    ports:
+      - "3000:3000"
+    environment:
+      CARPULSE_API_KEY: ${CARPULSE_API_KEY:?set CARPULSE_API_KEY in .env or the environment}
+    volumes:
+      - carpulse-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  carpulse-data:
