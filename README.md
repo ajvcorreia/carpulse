@@ -1,12 +1,13 @@
 # CarPulse
 
-Track Dubizzle car listing prices over time. Manual entry, not a scraper —
-Dubizzle sits behind Imperva Incapsula bot protection, so this app is built
-around you pasting a listing URL yourself rather than automated crawling.
+Track car listing prices over time, from any car sales site. Manual entry,
+not a scraper — most listing sites sit behind bot protection, so this app is
+built around you pasting a listing URL yourself rather than automated
+crawling.
 
 ## How it works
 
-- Paste a Dubizzle listing URL on the dashboard.
+- Paste a car listing URL on the dashboard.
   - If it's already tracked, you land on that car's page and can log a new price.
   - If it's new, you fill in make/model/year/km/spec/ad placement date and the price.
 - The dashboard lists every tracked car as an expandable row — collapsed shows
