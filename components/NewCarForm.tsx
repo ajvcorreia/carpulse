@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
+import { AutocompleteInput } from "@/components/AutocompleteInput";
 import { checkCarDuplicate, createCar } from "@/lib/actions";
 
 function Field({
@@ -35,6 +36,8 @@ export function NewCarForm({ url, options }: { url: string; options: FieldOption
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [make, setMake] = useState("");
+  const [model, setModel] = useState("");
+  const [spec, setSpec] = useState("");
   const today = new Date().toISOString().slice(0, 10);
 
   // Narrow model suggestions to the chosen make; an unrecognized (or empty)
@@ -78,19 +81,28 @@ export function NewCarForm({ url, options }: { url: string; options: FieldOption
       <input type="hidden" name="url" value={url} />
 
       <Field id="make" label="Make">
-        <input
+        <AutocompleteInput
           id="make"
           name="make"
-          list="makes-options"
           required
           value={make}
-          onChange={(e) => setMake(e.target.value)}
+          onChange={setMake}
+          options={options.makes}
           className={inputClass}
           placeholder="BMW"
         />
       </Field>
       <Field id="model" label="Model">
-        <input id="model" name="model" list="models-options" required className={inputClass} placeholder="3 Series" />
+        <AutocompleteInput
+          id="model"
+          name="model"
+          required
+          value={model}
+          onChange={setModel}
+          options={modelOptions}
+          className={inputClass}
+          placeholder="3 Series"
+        />
       </Field>
       <Field id="year" label="Year">
         <input id="year" name="year" type="number" required min={1980} max={2100} className={inputClass} placeholder="2026" />
@@ -102,7 +114,15 @@ export function NewCarForm({ url, options }: { url: string; options: FieldOption
         <input id="cylinders" name="cylinders" type="number" min={1} max={16} className={inputClass} placeholder="6" />
       </Field>
       <Field id="spec" label="Spec">
-        <input id="spec" name="spec" list="specs-options" className={inputClass} placeholder="GCC Specs" />
+        <AutocompleteInput
+          id="spec"
+          name="spec"
+          value={spec}
+          onChange={setSpec}
+          options={options.specs}
+          className={inputClass}
+          placeholder="GCC Specs"
+        />
       </Field>
       <Field id="exterior_color" label="Exterior color">
         <input id="exterior_color" name="exterior_color" className={inputClass} placeholder="Alpine White" />
@@ -160,22 +180,6 @@ export function NewCarForm({ url, options }: { url: string; options: FieldOption
           </button>
         )}
       </div>
-
-      <datalist id="makes-options">
-        {options.makes.map((m) => (
-          <option key={m} value={m} />
-        ))}
-      </datalist>
-      <datalist id="models-options">
-        {modelOptions.map((m) => (
-          <option key={m} value={m} />
-        ))}
-      </datalist>
-      <datalist id="specs-options">
-        {options.specs.map((s) => (
-          <option key={s} value={s} />
-        ))}
-      </datalist>
     </form>
   );
 }

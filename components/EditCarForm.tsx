@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState, useTransition } from "react";
+import { AutocompleteInput } from "@/components/AutocompleteInput";
 import { updateCar } from "@/lib/actions";
 import type { Car } from "@/lib/types";
 
@@ -43,12 +44,8 @@ export function EditCarForm({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [make, setMake] = useState(car.make);
-
-  // Suffixed with the car id so multiple cards can each embed this form (and
-  // its datalists) at once without colliding on duplicate element ids.
-  const makesListId = `makes-options-${car.id}`;
-  const modelsListId = `models-options-${car.id}`;
-  const specsListId = `specs-options-${car.id}`;
+  const [model, setModel] = useState(car.model);
+  const [spec, setSpec] = useState(car.spec ?? "");
 
   // Narrow model suggestions to the chosen make; an unrecognized (or empty)
   // make falls back to every model seen across all cars.
@@ -83,23 +80,24 @@ export function EditCarForm({
       </Field>
       <div className="hidden sm:block" />
       <Field id={`make-${car.id}`} label="Make">
-        <input
+        <AutocompleteInput
           id={`make-${car.id}`}
           name="make"
-          list={makesListId}
           required
           value={make}
-          onChange={(e) => setMake(e.target.value)}
+          onChange={setMake}
+          options={options.makes}
           className={inputClass}
         />
       </Field>
       <Field id={`model-${car.id}`} label="Model">
-        <input
+        <AutocompleteInput
           id={`model-${car.id}`}
           name="model"
-          list={modelsListId}
           required
-          defaultValue={car.model}
+          value={model}
+          onChange={setModel}
+          options={modelOptions}
           className={inputClass}
         />
       </Field>
@@ -130,11 +128,12 @@ export function EditCarForm({
         />
       </Field>
       <Field id={`spec-${car.id}`} label="Spec">
-        <input
+        <AutocompleteInput
           id={`spec-${car.id}`}
           name="spec"
-          list={specsListId}
-          defaultValue={car.spec ?? ""}
+          value={spec}
+          onChange={setSpec}
+          options={options.specs}
           className={inputClass}
         />
       </Field>
@@ -185,22 +184,6 @@ export function EditCarForm({
           ) : null}
         </div>
       </div>
-
-      <datalist id={makesListId}>
-        {options.makes.map((m) => (
-          <option key={m} value={m} />
-        ))}
-      </datalist>
-      <datalist id={modelsListId}>
-        {modelOptions.map((m) => (
-          <option key={m} value={m} />
-        ))}
-      </datalist>
-      <datalist id={specsListId}>
-        {options.specs.map((s) => (
-          <option key={s} value={s} />
-        ))}
-      </datalist>
     </form>
   );
 }
