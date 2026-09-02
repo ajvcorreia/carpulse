@@ -866,7 +866,19 @@ export function CarsTable({
                                   className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm outline-none focus:border-series-1"
                                 />
                               </div>
-                              <button type="submit" className={actionButtonClass}>
+                              <button
+                                type="submit"
+                                onClick={(e) => {
+                                  if (
+                                    !window.confirm(
+                                      `Strike out ${car.year} ${car.make} ${car.model}? It'll be hidden by default, same as a removed ad.`
+                                    )
+                                  ) {
+                                    e.preventDefault();
+                                  }
+                                }}
+                                className={actionButtonClass}
+                              >
                                 Strike out this car
                               </button>
                             </form>
