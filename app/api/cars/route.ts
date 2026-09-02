@@ -1,23 +1,20 @@
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { checkApiKey } from "@/lib/api-auth";
-import { createClient } from "@/lib/supabase/server";
+import { getDb, withTransaction } from "@/lib/db/client";
+import { toCar } from "@/lib/db/mappers";
+import { getCarByUrl, getCarsWithPrices } from "@/lib/data";
 
 export async function GET(req: Request) {
   const authError = checkApiKey(req);
   if (authError) return authError;
 
   const urlFilter = new URL(req.url).searchParams.get("url");
+  const cars = urlFilter ? await getCarByUrl(urlFilter).then((c) => (c ? [c] : [])) : await getCarsWithPrices();
 
-  const supabase = createClient();
-  let query = supabase.from("cars").select("*, price_history(*)").order("created_at", { ascending: false });
-  if (urlFilter) query = query.eq("url", urlFilter);
-
-  const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  return NextResponse.json({ cars: data });
+  return NextResponse.json({ cars });
 }
 
 const createCarSchema = z.object({
@@ -50,41 +47,43 @@ export async function POST(req: Request) {
     );
   }
 
-  const supabase = createClient();
-  const { data: car, error: carError } = await supabase
-    .from("cars")
-    .insert({
-      url: body.url,
-      make: body.make,
-      model: body.model,
-      year: body.year,
-      km: body.km ?? null,
-      cylinders: body.cylinders ?? null,
-      spec: body.spec ?? null,
-      exterior_color: body.exterior_color ?? null,
-      interior_color: body.interior_color ?? null,
-      ad_placed_at: body.ad_placed_at ?? null,
-    })
-    .select("*")
-    .single();
+  const db = getDb();
+  const carId = randomUUID();
 
-  if (carError || !car) {
-    const status = carError?.code === "23505" ? 409 : 500;
-    return NextResponse.json({ error: carError?.message ?? "Could not create car." }, { status });
+  try {
+    withTransaction(db, () => {
+      db.prepare(
+        `insert into cars (id, url, make, model, year, km, cylinders, spec, exterior_color, interior_color, ad_placed_at)
+         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(
+        carId,
+        body.url,
+        body.make,
+        body.model,
+        body.year,
+        body.km ?? null,
+        body.cylinders ?? null,
+        body.spec ?? null,
+        body.exterior_color ?? null,
+        body.interior_color ?? null,
+        body.ad_placed_at ?? null
+      );
+
+      db.prepare(
+        "insert into price_history (id, car_id, price, currency, recorded_at) values (?, ?, ?, ?, coalesce(?, date('now')))"
+      ).run(randomUUID(), carId, body.price, body.currency, body.recorded_at ?? null);
+    });
+  } catch (err) {
+    const isUnique = err instanceof Error && err.message.includes("UNIQUE constraint failed");
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Could not create car." },
+      { status: isUnique ? 409 : 500 }
+    );
   }
 
-  const { error: priceError } = await supabase.from("price_history").insert({
-    car_id: car.id,
-    price: body.price,
-    currency: body.currency,
-    ...(body.recorded_at ? { recorded_at: body.recorded_at } : {}),
-  });
-
-  if (priceError) {
-    return NextResponse.json({ error: priceError.message }, { status: 500 });
-  }
+  const row = db.prepare("select * from cars where id = ?").get(carId) as Parameters<typeof toCar>[0];
 
   revalidatePath("/");
 
-  return NextResponse.json({ car }, { status: 201 });
+  return NextResponse.json({ car: toCar(row) }, { status: 201 });
 }

@@ -1,33 +1,57 @@
-import { createClient } from "@/lib/supabase/server";
-import type { CarWithPrices } from "@/lib/types";
+import { getDb } from "@/lib/db/client";
+import { toCar, toPricePoint } from "@/lib/db/mappers";
+import type { Car, CarWithPrices, PricePoint } from "@/lib/types";
+
+type RawCarRow = Omit<Car, "is_removed" | "is_favorite" | "is_struck_out"> & {
+  is_removed: number;
+  is_favorite: number;
+  is_struck_out: number;
+};
+
+// Same-day price entries tie on recorded_at alone — created_at (insertion
+// order) breaks the tie deterministically. Carried over from the Postgres
+// version's identical comment/fix.
+function attachPriceHistory(rawCars: RawCarRow[]): CarWithPrices[] {
+  if (rawCars.length === 0) return [];
+
+  const db = getDb();
+  const placeholders = rawCars.map(() => "?").join(", ");
+  const prices = (
+    db
+      .prepare(
+        `select * from price_history where car_id in (${placeholders}) order by recorded_at asc, created_at asc`
+      )
+      .all(...rawCars.map((c) => c.id)) as PricePoint[]
+  ).map(toPricePoint);
+
+  const byCarId = new Map<string, PricePoint[]>();
+  for (const point of prices) {
+    const list = byCarId.get(point.car_id);
+    if (list) list.push(point);
+    else byCarId.set(point.car_id, [point]);
+  }
+
+  return rawCars.map((row) => ({ ...toCar(row), price_history: byCarId.get(row.id) ?? [] }));
+}
 
 export async function getCarsWithPrices(): Promise<CarWithPrices[]> {
-  const supabase = createClient();
-  const { data, error } = await supabase
-    .from("cars")
-    .select("*, price_history(*)")
-    .order("created_at", { ascending: false })
-    .order("recorded_at", { foreignTable: "price_history", ascending: true })
-    // Same-day entries tie on recorded_at alone — break ties by insertion order.
-    .order("created_at", { foreignTable: "price_history", ascending: true });
-
-  if (error) throw error;
-  return (data ?? []) as unknown as CarWithPrices[];
+  const db = getDb();
+  const rows = db.prepare("select * from cars order by created_at desc").all() as RawCarRow[];
+  return attachPriceHistory(rows);
 }
 
 export async function getCarWithPrices(id: string): Promise<CarWithPrices | null> {
-  const supabase = createClient();
-  const { data, error } = await supabase
-    .from("cars")
-    .select("*, price_history(*)")
-    .eq("id", id)
-    .order("recorded_at", { foreignTable: "price_history", ascending: true })
-    // Same-day entries tie on recorded_at alone — break ties by insertion order.
-    .order("created_at", { foreignTable: "price_history", ascending: true })
-    .maybeSingle();
+  const db = getDb();
+  const row = db.prepare("select * from cars where id = ?").get(id) as RawCarRow | undefined;
+  if (!row) return null;
+  return attachPriceHistory([row])[0];
+}
 
-  if (error) throw error;
-  return data as unknown as CarWithPrices | null;
+export async function getCarByUrl(url: string): Promise<CarWithPrices | null> {
+  const db = getDb();
+  const row = db.prepare("select * from cars where url = ?").get(url) as RawCarRow | undefined;
+  if (!row) return null;
+  return attachPriceHistory([row])[0];
 }
 
 // Suggestion lists for the make/model/spec autocomplete. Models are grouped
@@ -39,11 +63,13 @@ export async function getCarFieldOptions(): Promise<{
   specs: string[];
   modelsByMake: Record<string, string[]>;
 }> {
-  const supabase = createClient();
-  const { data, error } = await supabase.from("cars").select("make, model, spec");
-  if (error) throw error;
+  const db = getDb();
+  const rows = db.prepare("select make, model, spec from cars").all() as {
+    make: string;
+    model: string;
+    spec: string | null;
+  }[];
 
-  const rows = data ?? [];
   const makes = Array.from(new Set(rows.map((c) => c.make))).sort();
   const specs = Array.from(new Set(rows.map((c) => c.spec).filter((v): v is string => !!v))).sort();
 
@@ -60,19 +86,4 @@ export async function getCarFieldOptions(): Promise<{
       Object.entries(modelsByMake).map(([key, set]) => [key, Array.from(set).sort()])
     ),
   };
-}
-
-export async function getCarByUrl(url: string): Promise<CarWithPrices | null> {
-  const supabase = createClient();
-  const { data, error } = await supabase
-    .from("cars")
-    .select("*, price_history(*)")
-    .eq("url", url)
-    .order("recorded_at", { foreignTable: "price_history", ascending: true })
-    // Same-day entries tie on recorded_at alone — break ties by insertion order.
-    .order("created_at", { foreignTable: "price_history", ascending: true })
-    .maybeSingle();
-
-  if (error) throw error;
-  return data as unknown as CarWithPrices | null;
 }

@@ -1,8 +1,9 @@
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { checkApiKey } from "@/lib/api-auth";
-import { createClient } from "@/lib/supabase/server";
+import { getDb } from "@/lib/db/client";
 
 const addPriceSchema = z.object({
   price: z.number().nonnegative(),
@@ -25,23 +26,23 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     );
   }
 
-  const supabase = createClient();
-  const { data, error } = await supabase
-    .from("price_history")
-    .insert({
-      car_id: id,
-      price: body.price,
-      currency: body.currency,
-      ...(body.recorded_at ? { recorded_at: body.recorded_at } : {}),
-    })
-    .select("*")
-    .single();
+  const db = getDb();
+  const priceId = randomUUID();
 
-  if (error || !data) {
-    return NextResponse.json({ error: error?.message ?? "Could not add price." }, { status: 500 });
+  try {
+    db.prepare(
+      "insert into price_history (id, car_id, price, currency, recorded_at) values (?, ?, ?, ?, coalesce(?, date('now')))"
+    ).run(priceId, id, body.price, body.currency, body.recorded_at ?? null);
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Could not add price." },
+      { status: 500 }
+    );
   }
+
+  const price = db.prepare("select * from price_history where id = ?").get(priceId);
 
   revalidatePath("/");
 
-  return NextResponse.json({ price: data }, { status: 201 });
+  return NextResponse.json({ price }, { status: 201 });
 }

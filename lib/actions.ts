@@ -1,9 +1,11 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
+import { getDb, withTransaction } from "@/lib/db/client";
 
 function parseNumber(value: FormDataEntryValue | null): number | null {
   if (value == null || value === "") return null;
@@ -14,6 +16,18 @@ function parseNumber(value: FormDataEntryValue | null): number | null {
 function parseDate(value: FormDataEntryValue | null): string | null {
   const s = String(value ?? "").trim();
   return s === "" ? null : s;
+}
+
+function isUniqueViolation(err: unknown): boolean {
+  return err instanceof Error && err.message.includes("UNIQUE constraint failed");
+}
+
+// recordedAt null falls back to the column's own default (today) rather
+// than needing two separate prepared statements per call site.
+function insertPricePoint(db: DatabaseSync, carId: string, price: number, recordedAt: string | null) {
+  db.prepare(
+    "insert into price_history (id, car_id, price, recorded_at) values (?, ?, ?, coalesce(?, date('now')))"
+  ).run(randomUUID(), carId, price, recordedAt);
 }
 
 // Same car, re-listed under a different URL, tends to keep the same make,
@@ -27,17 +41,32 @@ function normalizeForCompare(value: string | null) {
   return (value ?? "").trim().toLowerCase();
 }
 
-async function findPossibleDuplicate(
-  supabase: ReturnType<typeof createClient>,
-  entry: { make: string; model: string; exteriorColor: string | null; interiorColor: string | null; km: number | null }
-) {
-  const { data: candidates } = await supabase
-    .from("cars")
-    .select("id, url, make, model, year, km, exterior_color, interior_color")
-    .ilike("make", entry.make)
-    .ilike("model", entry.model);
+type DuplicateCandidate = {
+  id: string;
+  url: string;
+  make: string;
+  model: string;
+  year: number;
+  km: number | null;
+  exterior_color: string | null;
+  interior_color: string | null;
+};
 
-  if (!candidates || entry.km == null) return null;
+function findPossibleDuplicate(entry: {
+  make: string;
+  model: string;
+  exteriorColor: string | null;
+  interiorColor: string | null;
+  km: number | null;
+}) {
+  if (entry.km == null) return null;
+
+  const db = getDb();
+  const candidates = db
+    .prepare(
+      "select id, url, make, model, year, km, exterior_color, interior_color from cars where make = ? collate nocase and model = ? collate nocase"
+    )
+    .all(entry.make, entry.model) as DuplicateCandidate[];
 
   for (const c of candidates) {
     if (c.km == null) continue;
@@ -69,8 +98,7 @@ export async function checkCarDuplicate(formData: FormData) {
 
   if (!make || !model) return null;
 
-  const supabase = createClient();
-  return findPossibleDuplicate(supabase, { make, model, exteriorColor, interiorColor, km });
+  return findPossibleDuplicate({ make, model, exteriorColor, interiorColor, km });
 }
 
 export async function createCar(_prevState: unknown, formData: FormData) {
@@ -91,39 +119,24 @@ export async function createCar(_prevState: unknown, formData: FormData) {
     return { error: "URL, make, model, year, and price are required." };
   }
 
-  const supabase = createClient();
+  const db = getDb();
+  const carId = randomUUID();
 
-  const { data: car, error: carError } = await supabase
-    .from("cars")
-    .insert({
-      url,
-      make,
-      model,
-      year,
-      km,
-      cylinders,
-      spec,
-      exterior_color: exteriorColor,
-      interior_color: interiorColor,
-      ad_placed_at: adPlacedAt,
-    })
-    .select("id")
-    .single();
+  try {
+    withTransaction(db, () => {
+      db.prepare(
+        `insert into cars (id, url, make, model, year, km, cylinders, spec, exterior_color, interior_color, ad_placed_at)
+         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(carId, url, make, model, year, km, cylinders, spec, exteriorColor, interiorColor, adPlacedAt);
 
-  if (carError || !car) {
-    return { error: carError?.message ?? "Could not save the car." };
-  }
-
-  const { error: priceError } = await supabase
-    .from("price_history")
-    .insert({ car_id: car.id, price, ...(recordedAt ? { recorded_at: recordedAt } : {}) });
-
-  if (priceError) {
-    return { error: priceError.message };
+      insertPricePoint(db, carId, price, recordedAt);
+    });
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Could not save the car." };
   }
 
   revalidatePath("/");
-  redirect(`/?highlight=${car.id}`);
+  redirect(`/?highlight=${carId}`);
 }
 
 export async function updateCar(_prevState: unknown, formData: FormData) {
@@ -143,27 +156,20 @@ export async function updateCar(_prevState: unknown, formData: FormData) {
     return { error: "URL, make, model, and year are required." };
   }
 
-  const supabase = createClient();
+  const db = getDb();
 
-  const { error } = await supabase
-    .from("cars")
-    .update({
-      url,
-      make,
-      model,
-      year,
-      km,
-      cylinders,
-      spec,
-      exterior_color: exteriorColor,
-      interior_color: interiorColor,
-      ad_placed_at: adPlacedAt,
-    })
-    .eq("id", carId);
-
-  if (error) {
+  try {
+    db.prepare(
+      `update cars set url = ?, make = ?, model = ?, year = ?, km = ?, cylinders = ?, spec = ?,
+       exterior_color = ?, interior_color = ?, ad_placed_at = ? where id = ?`
+    ).run(url, make, model, year, km, cylinders, spec, exteriorColor, interiorColor, adPlacedAt, carId);
+  } catch (err) {
     return {
-      error: error.code === "23505" ? "Another tracked car already has that URL." : error.message,
+      error: isUniqueViolation(err)
+        ? "Another tracked car already has that URL."
+        : err instanceof Error
+          ? err.message
+          : "Could not save changes.",
     };
   }
 
@@ -184,11 +190,12 @@ export async function setCarStruckOut(formData: FormData) {
 
   if (!carId) return;
 
-  const supabase = createClient();
-  await supabase
-    .from("cars")
-    .update({ is_struck_out: struckOut, strike_out_reason: struckOut ? reason : null })
-    .eq("id", carId);
+  const db = getDb();
+  db.prepare("update cars set is_struck_out = ?, strike_out_reason = ? where id = ?").run(
+    struckOut ? 1 : 0,
+    struckOut ? reason : null,
+    carId
+  );
 
   revalidatePath("/");
 }
@@ -200,8 +207,8 @@ export async function setCarStruckOut(formData: FormData) {
 // while a plain server round-trip has no such ambiguity.
 export async function markCarOpened(carId: string) {
   if (!carId) return;
-  const supabase = createClient();
-  await supabase.from("cars").update({ last_opened_at: new Date().toISOString() }).eq("id", carId);
+  const db = getDb();
+  db.prepare("update cars set last_opened_at = ? where id = ?").run(new Date().toISOString(), carId);
   revalidatePath("/");
 }
 
@@ -209,8 +216,8 @@ export async function markCarOpened(carId: string) {
 // without leaving it.
 export async function setCarRemovedFlag(carId: string, removed: boolean) {
   if (!carId) return;
-  const supabase = createClient();
-  await supabase.from("cars").update({ is_removed: removed }).eq("id", carId);
+  const db = getDb();
+  db.prepare("update cars set is_removed = ? where id = ?").run(removed ? 1 : 0, carId);
   revalidatePath("/");
 }
 
@@ -220,8 +227,8 @@ export async function setCarRemovedFlag(carId: string, removed: boolean) {
 // elsewhere in this app.
 export async function setCarFavorite(carId: string, favorite: boolean) {
   if (!carId) return;
-  const supabase = createClient();
-  await supabase.from("cars").update({ is_favorite: favorite }).eq("id", carId);
+  const db = getDb();
+  db.prepare("update cars set is_favorite = ? where id = ?").run(favorite ? 1 : 0, carId);
   revalidatePath("/");
 }
 
@@ -234,13 +241,11 @@ export async function addPrice(_prevState: unknown, formData: FormData) {
     return { error: "Price is required." };
   }
 
-  const supabase = createClient();
-  const { error } = await supabase
-    .from("price_history")
-    .insert({ car_id: carId, price, ...(recordedAt ? { recorded_at: recordedAt } : {}) });
-
-  if (error) {
-    return { error: error.message };
+  const db = getDb();
+  try {
+    insertPricePoint(db, carId, price, recordedAt);
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Could not save the price." };
   }
 
   revalidatePath("/");
@@ -259,13 +264,11 @@ export async function addPriceInline(_prevState: unknown, formData: FormData) {
     return { error: "Price is required." };
   }
 
-  const supabase = createClient();
-  const { error } = await supabase
-    .from("price_history")
-    .insert({ car_id: carId, price, ...(recordedAt ? { recorded_at: recordedAt } : {}) });
-
-  if (error) {
-    return { error: error.message };
+  const db = getDb();
+  try {
+    insertPricePoint(db, carId, price, recordedAt);
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Could not save the price." };
   }
 
   revalidatePath("/");
@@ -283,17 +286,22 @@ export async function deletePrice(formData: FormData) {
     return { error: "Missing price entry." };
   }
 
-  const supabase = createClient();
-  const { data: deleted, error } = await supabase
-    .from("price_history")
-    .delete()
-    .eq("id", priceId)
-    .select("price, currency, recorded_at")
-    .single();
+  const db = getDb();
+  const row = db
+    .prepare("select price, currency, recorded_at from price_history where id = ?")
+    .get(priceId) as { price: number; currency: string; recorded_at: string } | undefined;
 
-  if (error || !deleted) {
-    return { error: error?.message ?? "Could not delete that price." };
+  if (!row) {
+    return { error: "Could not delete that price." };
   }
+
+  // Server Action return values cross the same Server->Client serialization
+  // boundary page props do — node:sqlite's null-prototype rows fail that
+  // ("Only plain objects... Classes or null prototypes are not supported"),
+  // so this has to be re-spread into an actual plain object.
+  const deleted = { ...row };
+
+  db.prepare("delete from price_history where id = ?").run(priceId);
 
   revalidatePath("/");
   return { success: true as const, deleted };
@@ -312,11 +320,17 @@ export async function undoDeletePrice(formData: FormData) {
     return { error: "Nothing to restore." };
   }
 
-  const supabase = createClient();
-  const { error } = await supabase.from("price_history").insert({ car_id: carId, price, currency, recorded_at: recordedAt });
-
-  if (error) {
-    return { error: error.message };
+  const db = getDb();
+  try {
+    db.prepare("insert into price_history (id, car_id, price, currency, recorded_at) values (?, ?, ?, ?, ?)").run(
+      randomUUID(),
+      carId,
+      price,
+      currency,
+      recordedAt
+    );
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Could not restore that price." };
   }
 
   revalidatePath("/");
@@ -369,73 +383,70 @@ export async function importData(_prevState: unknown, formData: FormData) {
     return { error: "That file isn't valid CarPulse export JSON." };
   }
 
-  const supabase = createClient();
+  const db = getDb();
 
   let carsAdded = 0;
   let carsMatched = 0;
   let pricesAdded = 0;
   let pricesSkipped = 0;
 
-  for (const entry of parsed.cars) {
-    const { data: existingCar } = await supabase.from("cars").select("id").eq("url", entry.url).maybeSingle();
+  const findByUrl = db.prepare("select id from cars where url = ?");
+  // created_at: coalesce falls back to the table's default (now) when the
+  // import entry doesn't specify one, same as omitting the column would.
+  const insertCar = db.prepare(
+    `insert into cars (id, url, make, model, year, km, cylinders, spec, exterior_color, interior_color,
+     ad_placed_at, is_favorite, is_removed, is_struck_out, strike_out_reason, created_at)
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, coalesce(?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')))`
+  );
+  const existingPricesStmt = db.prepare("select price, recorded_at from price_history where car_id = ?");
+  const insertPrice = db.prepare(
+    "insert into price_history (id, car_id, price, currency, recorded_at) values (?, ?, ?, ?, ?)"
+  );
 
-    let carId = existingCar?.id as string | undefined;
+  withTransaction(db, () => {
+    for (const entry of parsed.cars) {
+      const existing = findByUrl.get(entry.url) as { id: string } | undefined;
+      let carId = existing?.id;
 
-    if (carId) {
-      carsMatched++;
-    } else {
-      const { data: newCar, error: carError } = await supabase
-        .from("cars")
-        .insert({
-          url: entry.url,
-          make: entry.make,
-          model: entry.model,
-          year: entry.year,
-          km: entry.km ?? null,
-          cylinders: entry.cylinders ?? null,
-          spec: entry.spec ?? null,
-          exterior_color: entry.exterior_color ?? null,
-          interior_color: entry.interior_color ?? null,
-          ad_placed_at: entry.ad_placed_at ?? null,
-          is_favorite: entry.is_favorite ?? false,
-          is_removed: entry.is_removed ?? false,
-          is_struck_out: entry.is_struck_out ?? false,
-          strike_out_reason: entry.is_struck_out ? entry.strike_out_reason ?? null : null,
-          ...(entry.created_at ? { created_at: entry.created_at } : {}),
-        })
-        .select("id")
-        .single();
+      if (carId) {
+        carsMatched++;
+      } else {
+        carId = randomUUID();
+        insertCar.run(
+          carId,
+          entry.url,
+          entry.make,
+          entry.model,
+          entry.year,
+          entry.km ?? null,
+          entry.cylinders ?? null,
+          entry.spec ?? null,
+          entry.exterior_color ?? null,
+          entry.interior_color ?? null,
+          entry.ad_placed_at ?? null,
+          entry.is_favorite ? 1 : 0,
+          entry.is_removed ? 1 : 0,
+          entry.is_struck_out ? 1 : 0,
+          entry.is_struck_out ? (entry.strike_out_reason ?? null) : null,
+          entry.created_at ?? null
+        );
+        carsAdded++;
+      }
 
-      if (carError || !newCar) continue;
-      carId = newCar.id;
-      carsAdded++;
+      if (entry.price_history.length === 0) continue;
+
+      const existingPrices = existingPricesStmt.all(carId) as { price: number; recorded_at: string }[];
+      const existingKeys = new Set(existingPrices.map((p) => `${p.recorded_at}|${p.price}`));
+
+      const newEntries = entry.price_history.filter((p) => !existingKeys.has(`${p.recorded_at}|${p.price}`));
+      pricesSkipped += entry.price_history.length - newEntries.length;
+
+      for (const p of newEntries) {
+        insertPrice.run(randomUUID(), carId, p.price, p.currency, p.recorded_at);
+        pricesAdded++;
+      }
     }
-
-    if (entry.price_history.length === 0) continue;
-
-    const { data: existingPrices } = await supabase
-      .from("price_history")
-      .select("price, recorded_at")
-      .eq("car_id", carId);
-
-    const existingKeys = new Set((existingPrices ?? []).map((p) => `${p.recorded_at}|${p.price}`));
-
-    const newEntries = entry.price_history.filter((p) => !existingKeys.has(`${p.recorded_at}|${p.price}`));
-    pricesSkipped += entry.price_history.length - newEntries.length;
-
-    if (newEntries.length === 0) continue;
-
-    const { error: priceError } = await supabase.from("price_history").insert(
-      newEntries.map((p) => ({
-        car_id: carId,
-        price: p.price,
-        currency: p.currency,
-        recorded_at: p.recorded_at,
-      }))
-    );
-
-    if (!priceError) pricesAdded += newEntries.length;
-  }
+  });
 
   revalidatePath("/");
 

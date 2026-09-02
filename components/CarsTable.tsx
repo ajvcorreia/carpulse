@@ -71,6 +71,7 @@ type Filters = {
   hideRemoved: boolean;
   hideStruckOut: boolean;
   onlyPriceUpdates: boolean;
+  onlyFavorites: boolean;
 };
 
 const DEFAULT_FILTERS: Filters = {
@@ -87,6 +88,7 @@ const DEFAULT_FILTERS: Filters = {
   hideRemoved: true,
   hideStruckOut: true,
   onlyPriceUpdates: false,
+  onlyFavorites: false,
 };
 
 const FILTERS_STORAGE_KEY = "carpulse:filters";
@@ -158,6 +160,7 @@ function matchesFilters(row: Row, filters: Filters): boolean {
 
   if (filters.hideRemoved && car.is_removed) return false;
   if (filters.hideStruckOut && car.is_struck_out) return false;
+  if (filters.onlyFavorites && !car.is_favorite) return false;
   // "Had a price update" means more than one recorded price point — the
   // first entry is the initial tracked price, not an update.
   if (filters.onlyPriceUpdates && points.length < 2) return false;
@@ -197,6 +200,7 @@ function optionsFor<T>(
   scoped.hideRemoved = filters.hideRemoved;
   scoped.hideStruckOut = filters.hideStruckOut;
   scoped.onlyPriceUpdates = filters.onlyPriceUpdates;
+  scoped.onlyFavorites = filters.onlyFavorites;
   scoped.kmMin = filters.kmMin;
   scoped.kmMax = filters.kmMax;
   scoped.priceMin = filters.priceMin;
@@ -619,6 +623,14 @@ export function CarsTable({
             onChange={(e) => setFilter("onlyPriceUpdates", e.target.checked)}
           />
           Only cars with price updates
+        </label>
+        <label className="flex items-center gap-2 self-end pb-1.5 text-sm text-text-secondary">
+          <input
+            type="checkbox"
+            checked={filters.onlyFavorites}
+            onChange={(e) => setFilter("onlyFavorites", e.target.checked)}
+          />
+          Only favorites
         </label>
         {hasActiveFilters ? (
           <button type="button" onClick={resetFilters} className="text-sm text-series-1 hover:underline">
