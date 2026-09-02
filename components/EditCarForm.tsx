@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { updateCar } from "@/lib/actions";
 import type { Car } from "@/lib/types";
 
@@ -26,12 +26,21 @@ function Field({
 const inputClass =
   "w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-series-1";
 
-type FieldOptions = { makes: string[]; models: string[]; specs: string[] };
+type FieldOptions = { makes: string[]; specs: string[]; modelsByMake: Record<string, string[]> };
 
 export function EditCarForm({ car, options }: { car: Car; options: FieldOptions }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [make, setMake] = useState(car.make);
+
+  // Narrow model suggestions to the chosen make; an unrecognized (or empty)
+  // make falls back to every model seen across all cars.
+  const modelOptions = useMemo(() => {
+    const key = make.trim().toLowerCase();
+    if (key && options.modelsByMake[key]) return options.modelsByMake[key];
+    return Array.from(new Set(Object.values(options.modelsByMake).flat())).sort();
+  }, [make, options]);
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -54,7 +63,15 @@ export function EditCarForm({ car, options }: { car: Car; options: FieldOptions 
       </Field>
       <div className="hidden sm:block" />
       <Field id="make" label="Make">
-        <input id="make" name="make" list="makes-options" required defaultValue={car.make} className={inputClass} />
+        <input
+          id="make"
+          name="make"
+          list="makes-options"
+          required
+          value={make}
+          onChange={(e) => setMake(e.target.value)}
+          className={inputClass}
+        />
       </Field>
       <Field id="model" label="Model">
         <input id="model" name="model" list="models-options" required defaultValue={car.model} className={inputClass} />
@@ -133,7 +150,7 @@ export function EditCarForm({ car, options }: { car: Car; options: FieldOptions 
         ))}
       </datalist>
       <datalist id="models-options">
-        {options.models.map((m) => (
+        {modelOptions.map((m) => (
           <option key={m} value={m} />
         ))}
       </datalist>
