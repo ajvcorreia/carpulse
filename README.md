@@ -1,4 +1,4 @@
-# DubbizleWatch
+# CarPulse
 
 Track Dubizzle car listing prices over time. Manual entry, not a scraper —
 Dubizzle sits behind Imperva Incapsula bot protection, so this app is built

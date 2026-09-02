@@ -30,7 +30,7 @@ export async function GET() {
     })),
   };
 
-  const filename = `dubbizlewatch-export-${new Date().toISOString().slice(0, 10)}.json`;
+  const filename = `carpulse-export-${new Date().toISOString().slice(0, 10)}.json`;
 
   return new NextResponse(JSON.stringify(payload, null, 2), {
     headers: {

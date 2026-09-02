@@ -19,7 +19,7 @@ export default function ImportPage() {
       <div className="space-y-1">
         <h1 className="text-xl font-semibold">Import</h1>
         <p className="text-sm text-text-secondary">
-          Upload a DubbizleWatch export JSON file. This only adds data — cars already
+          Upload a CarPulse export JSON file. This only adds data — cars already
           tracked (matched by URL) and price points already logged (matched by date +
           price) are left untouched, never overwritten.
         </p>

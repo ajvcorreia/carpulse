@@ -89,8 +89,8 @@ const DEFAULT_FILTERS: Filters = {
   onlyPriceUpdates: false,
 };
 
-const FILTERS_STORAGE_KEY = "dubbizlewatch:filters";
-const SORT_STORAGE_KEY = "dubbizlewatch:sort";
+const FILTERS_STORAGE_KEY = "carpulse:filters";
+const SORT_STORAGE_KEY = "carpulse:sort";
 
 function saveFilters(filters: Filters) {
   try {

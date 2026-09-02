@@ -6,7 +6,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
       <header className="border-b border-border">
         <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-3 sm:max-w-[1440px]">
           <Link href="/" className="text-lg font-semibold">
-            DubbizleWatch
+            CarPulse
           </Link>
         </div>
       </header>

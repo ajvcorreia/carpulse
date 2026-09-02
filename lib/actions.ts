@@ -366,7 +366,7 @@ export async function importData(_prevState: unknown, formData: FormData) {
     const text = await file.text();
     parsed = importFileSchema.parse(JSON.parse(text));
   } catch {
-    return { error: "That file isn't valid DubbizleWatch export JSON." };
+    return { error: "That file isn't valid CarPulse export JSON." };
   }
 
   const supabase = createClient();

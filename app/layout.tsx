@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "DubbizleWatch",
+  title: "CarPulse",
   description: "Track Dubizzle car listing prices over time.",
 };
 
