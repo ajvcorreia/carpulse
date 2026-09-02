@@ -26,7 +26,9 @@ function Field({
 const inputClass =
   "w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-series-1";
 
-export function EditCarForm({ car }: { car: Car }) {
+type FieldOptions = { makes: string[]; models: string[]; specs: string[] };
+
+export function EditCarForm({ car, options }: { car: Car; options: FieldOptions }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -52,10 +54,10 @@ export function EditCarForm({ car }: { car: Car }) {
       </Field>
       <div className="hidden sm:block" />
       <Field id="make" label="Make">
-        <input id="make" name="make" required defaultValue={car.make} className={inputClass} />
+        <input id="make" name="make" list="makes-options" required defaultValue={car.make} className={inputClass} />
       </Field>
       <Field id="model" label="Model">
-        <input id="model" name="model" required defaultValue={car.model} className={inputClass} />
+        <input id="model" name="model" list="models-options" required defaultValue={car.model} className={inputClass} />
       </Field>
       <Field id="year" label="Year">
         <input
@@ -84,7 +86,7 @@ export function EditCarForm({ car }: { car: Car }) {
         />
       </Field>
       <Field id="spec" label="Spec">
-        <input id="spec" name="spec" defaultValue={car.spec ?? ""} className={inputClass} />
+        <input id="spec" name="spec" list="specs-options" defaultValue={car.spec ?? ""} className={inputClass} />
       </Field>
       <Field id="exterior_color" label="Exterior color">
         <input
@@ -124,6 +126,22 @@ export function EditCarForm({ car }: { car: Car }) {
           </button>
         </div>
       </div>
+
+      <datalist id="makes-options">
+        {options.makes.map((m) => (
+          <option key={m} value={m} />
+        ))}
+      </datalist>
+      <datalist id="models-options">
+        {options.models.map((m) => (
+          <option key={m} value={m} />
+        ))}
+      </datalist>
+      <datalist id="specs-options">
+        {options.specs.map((s) => (
+          <option key={s} value={s} />
+        ))}
+      </datalist>
     </form>
   );
 }

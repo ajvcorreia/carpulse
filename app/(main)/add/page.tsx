@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getCarByUrl } from "@/lib/data";
+import { getCarByUrl, getCarFieldOptions } from "@/lib/data";
 import { NewCarForm } from "@/components/NewCarForm";
 import { AddPriceForm } from "@/components/AddPriceForm";
 import { PriceChart } from "@/components/PriceChart";
@@ -61,6 +61,8 @@ export default async function AddPage({
     );
   }
 
+  const options = await getCarFieldOptions();
+
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       {backButton}
@@ -68,7 +70,7 @@ export default async function AddPage({
         <h1 className="text-xl font-semibold">New car</h1>
         <p className="break-all text-sm text-text-secondary">{url}</p>
       </div>
-      <NewCarForm url={url} />
+      <NewCarForm url={url} options={options} />
     </div>
   );
 }

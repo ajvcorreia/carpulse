@@ -27,8 +27,9 @@ const inputClass =
   "w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-series-1";
 
 type Duplicate = { id: string; url: string; make: string; model: string; year: number; km: number };
+type FieldOptions = { makes: string[]; models: string[]; specs: string[] };
 
-export function NewCarForm({ url }: { url: string }) {
+export function NewCarForm({ url, options }: { url: string; options: FieldOptions }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [duplicate, setDuplicate] = useState<Duplicate | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -68,10 +69,10 @@ export function NewCarForm({ url }: { url: string }) {
       <input type="hidden" name="url" value={url} />
 
       <Field id="make" label="Make">
-        <input id="make" name="make" required className={inputClass} placeholder="BMW" />
+        <input id="make" name="make" list="makes-options" required className={inputClass} placeholder="BMW" />
       </Field>
       <Field id="model" label="Model">
-        <input id="model" name="model" required className={inputClass} placeholder="3 Series" />
+        <input id="model" name="model" list="models-options" required className={inputClass} placeholder="3 Series" />
       </Field>
       <Field id="year" label="Year">
         <input id="year" name="year" type="number" required min={1980} max={2100} className={inputClass} placeholder="2026" />
@@ -83,7 +84,7 @@ export function NewCarForm({ url }: { url: string }) {
         <input id="cylinders" name="cylinders" type="number" min={1} max={16} className={inputClass} placeholder="6" />
       </Field>
       <Field id="spec" label="Spec">
-        <input id="spec" name="spec" className={inputClass} placeholder="GCC Specs" />
+        <input id="spec" name="spec" list="specs-options" className={inputClass} placeholder="GCC Specs" />
       </Field>
       <Field id="exterior_color" label="Exterior color">
         <input id="exterior_color" name="exterior_color" className={inputClass} placeholder="Alpine White" />
@@ -141,6 +142,22 @@ export function NewCarForm({ url }: { url: string }) {
           </button>
         )}
       </div>
+
+      <datalist id="makes-options">
+        {options.makes.map((m) => (
+          <option key={m} value={m} />
+        ))}
+      </datalist>
+      <datalist id="models-options">
+        {options.models.map((m) => (
+          <option key={m} value={m} />
+        ))}
+      </datalist>
+      <datalist id="specs-options">
+        {options.specs.map((s) => (
+          <option key={s} value={s} />
+        ))}
+      </datalist>
     </form>
   );
 }

@@ -30,6 +30,22 @@ export async function getCarWithPrices(id: string): Promise<CarWithPrices | null
   return data as unknown as CarWithPrices | null;
 }
 
+// Flat, uncascaded suggestion lists for the make/model/spec autocomplete —
+// every distinct value seen across all tracked cars, not filtered by any of
+// the form's other fields.
+export async function getCarFieldOptions(): Promise<{ makes: string[]; models: string[]; specs: string[] }> {
+  const supabase = createClient();
+  const { data, error } = await supabase.from("cars").select("make, model, spec");
+  if (error) throw error;
+
+  const rows = data ?? [];
+  return {
+    makes: Array.from(new Set(rows.map((c) => c.make))).sort(),
+    models: Array.from(new Set(rows.map((c) => c.model))).sort(),
+    specs: Array.from(new Set(rows.map((c) => c.spec).filter((v): v is string => !!v))).sort(),
+  };
+}
+
 export async function getCarByUrl(url: string): Promise<CarWithPrices | null> {
   const supabase = createClient();
   const { data, error } = await supabase

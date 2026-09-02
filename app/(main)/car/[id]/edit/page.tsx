@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getCarWithPrices } from "@/lib/data";
+import { getCarWithPrices, getCarFieldOptions } from "@/lib/data";
 import { EditCarForm } from "@/components/EditCarForm";
 
 export default async function EditCarPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const car = await getCarWithPrices(id);
+  const [car, options] = await Promise.all([getCarWithPrices(id), getCarFieldOptions()]);
 
   if (!car) {
     notFound();
@@ -30,7 +30,7 @@ export default async function EditCarPage({ params }: { params: Promise<{ id: st
         </p>
       </div>
 
-      <EditCarForm car={car} />
+      <EditCarForm car={car} options={options} />
     </div>
   );
 }
