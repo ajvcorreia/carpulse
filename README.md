@@ -9,9 +9,11 @@ around you pasting a listing URL yourself rather than automated crawling.
 - Paste a Dubizzle listing URL on the dashboard.
   - If it's already tracked, you land on that car's page and can log a new price.
   - If it's new, you fill in make/model/year/km/spec/ad placement date and the price.
-- The dashboard lists every tracked car with its latest price, the change since
-  the last update, and a sparkline of price history.
-- Each car's page has the full price chart and history table.
+- The dashboard lists every tracked car as an expandable row — collapsed shows
+  make/model/price/year (and the full spec on desktop); expanding it reveals
+  the price chart, full history, edit form, and actions (favorite, mark
+  removed, strike out, "Ask Claude" for engine/reliability insights).
+- A key-gated REST API (`/api/cars`) is also available for scripts/automation.
 
 ## Stack
 
@@ -21,9 +23,6 @@ login. Don't expose this beyond that network without adding auth back.
 
 ## Local development
 
-Local Supabase and the dev server run on the VM at `192.168.10.189` (matches
-the [PriceWise](../PriceWise) project's setup):
-
 ```bash
 npm install
 npx supabase start   # local Postgres/Studio, ports set in supabase/config.toml
@@ -31,4 +30,5 @@ npm run dev
 ```
 
 Copy `.env.local.example` to `.env.local` and fill in the values `supabase start`
-prints (API URL + anon key).
+prints (API URL + anon key). If you'd rather point at a hosted Supabase project
+instead of running one locally, use its project URL and anon key the same way.
