@@ -8,7 +8,7 @@ import { FavoriteToggle } from "@/components/FavoriteToggle";
 import { InlineAddPriceForm } from "@/components/InlineAddPriceForm";
 import { EditCarForm } from "@/components/EditCarForm";
 import { markCarOpened, setCarRemovedFlag, setCarStruckOut } from "@/lib/actions";
-import { daysListed, formatPrice, totalDelta } from "@/lib/format";
+import { daysListed, formatDMY, formatPrice, totalDelta } from "@/lib/format";
 import { claudeInsightsUrl } from "@/lib/claude";
 import type { CarWithPrices, PricePoint } from "@/lib/types";
 
@@ -963,22 +963,37 @@ export function CarsTable({
                         {car.listing_history.length > 0 ? (
                           <div className="space-y-2">
                             <h3 className="text-xs font-medium text-text-secondary">Previously listed at</h3>
-                            <ul className="space-y-1 text-sm">
-                              {[...car.listing_history].reverse().map((entry) => (
-                                <li key={entry.id} className="text-text-secondary">
-                                  <a
-                                    href={entry.previous_url}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="break-all text-series-1 hover:underline"
-                                  >
-                                    {entry.previous_url}
-                                  </a>
-                                  {entry.previous_ad_placed_at ? ` — placed ${entry.previous_ad_placed_at}` : ""},
-                                  replaced {new Date(entry.replaced_at).toLocaleDateString()}
-                                </li>
-                              ))}
-                            </ul>
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="text-left text-xs text-text-secondary">
+                                  <th className="pb-1 pr-3 font-medium">Placed</th>
+                                  <th className="pb-1 pr-3 font-medium">Replaced</th>
+                                  <th className="pb-1 font-medium">Listing URL</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {[...car.listing_history].reverse().map((entry) => (
+                                  <tr key={entry.id} className="border-b border-border last:border-0">
+                                    <td className="py-2 pr-3 tabular-nums text-text-secondary">
+                                      {formatDMY(entry.previous_ad_placed_at)}
+                                    </td>
+                                    <td className="py-2 pr-3 tabular-nums text-text-secondary">
+                                      {formatDMY(entry.replaced_at)}
+                                    </td>
+                                    <td className="py-2">
+                                      <a
+                                        href={entry.previous_url}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="break-all text-series-1 hover:underline"
+                                      >
+                                        {entry.previous_url}
+                                      </a>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
                           </div>
                         ) : null}
                       </>

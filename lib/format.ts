@@ -4,6 +4,22 @@ export function formatPrice(price: number, currency: string) {
   return price.toLocaleString(undefined, { style: "currency", currency, maximumFractionDigits: 0 });
 }
 
+// day/month/year, always — locale-dependent formatting (toLocaleDateString
+// with no explicit locale) would otherwise flip to month/day/year depending
+// on the server's system locale, which is exactly the ambiguity this exists
+// to avoid. Accepts either a plain date ("2026-08-05") or a full ISO
+// timestamp; a bare date is anchored to UTC midnight so it doesn't shift a
+// day depending on the reader's timezone.
+export function formatDMY(dateStr: string | null): string {
+  if (!dateStr) return "—";
+  const iso = dateStr.length <= 10 ? `${dateStr}T00:00:00Z` : dateStr;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  const month = String(d.getUTCMonth() + 1).padStart(2, "0");
+  return `${day}/${month}/${d.getUTCFullYear()}`;
+}
+
 // Total change from the first recorded price to the latest — how much the
 // car has moved since tracking started, not just the most recent update.
 export function totalDelta(points: PricePoint[]) {
