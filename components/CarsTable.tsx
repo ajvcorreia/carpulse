@@ -959,6 +959,28 @@ export function CarsTable({
                         </div>
 
                         <PriceHistoryList carId={car.id} points={points} />
+
+                        {car.listing_history.length > 0 ? (
+                          <div className="space-y-2">
+                            <h3 className="text-xs font-medium text-text-secondary">Previously listed at</h3>
+                            <ul className="space-y-1 text-sm">
+                              {[...car.listing_history].reverse().map((entry) => (
+                                <li key={entry.id} className="text-text-secondary">
+                                  <a
+                                    href={entry.previous_url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="break-all text-series-1 hover:underline"
+                                  >
+                                    {entry.previous_url}
+                                  </a>
+                                  {entry.previous_ad_placed_at ? ` — placed ${entry.previous_ad_placed_at}` : ""},
+                                  replaced {new Date(entry.replaced_at).toLocaleDateString()}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : null}
                       </>
                     )}
                   </div>

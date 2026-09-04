@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { AutocompleteInput } from "@/components/AutocompleteInput";
-import { checkCarDuplicate, createCar } from "@/lib/actions";
+import { checkCarDuplicate, createCar, relistCar } from "@/lib/actions";
 
 function Field({
   id,
@@ -27,7 +27,15 @@ function Field({
 const inputClass =
   "w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-series-1";
 
-type Duplicate = { id: string; url: string; make: string; model: string; year: number; km: number };
+type Duplicate = {
+  id: string;
+  url: string;
+  make: string;
+  model: string;
+  year: number;
+  km: number;
+  is_removed: boolean;
+};
 type FieldOptions = { makes: string[]; specs: string[]; modelsByMake: Record<string, string[]> };
 
 export function NewCarForm({ url, options }: { url: string; options: FieldOptions }) {
@@ -74,6 +82,20 @@ export function NewCarForm({ url, options }: { url: string; options: FieldOption
   function handleConfirmAnyway() {
     if (!formRef.current) return;
     submitForReal(new FormData(formRef.current));
+  }
+
+  // Merges into the matched car instead of creating a new one — its price
+  // history carries over, and the old URL/ad date are archived so they stay
+  // visible rather than silently overwritten.
+  function handleRelist() {
+    if (!formRef.current || !duplicate) return;
+    const formData = new FormData(formRef.current);
+    formData.set("existing_car_id", duplicate.id);
+    setError(null);
+    startTransition(async () => {
+      const result = await relistCar(null, formData);
+      if (result?.error) setError(result.error);
+    });
   }
 
   return (
@@ -150,7 +172,8 @@ export function NewCarForm({ url, options }: { url: string; options: FieldOption
               <Link href={`/?highlight=${duplicate.id}`} className="text-series-1 hover:underline">
                 {duplicate.year} {duplicate.make} {duplicate.model}
               </Link>{" "}
-              — same make/model/colors, KM {duplicate.km.toLocaleString()}. Probably the same car
+              — same make/model/colors, KM {duplicate.km.toLocaleString()}
+              {duplicate.is_removed ? ", currently marked removed" : ""}. Probably the same car
               re-listed under a new ad.
             </p>
             <div className="flex flex-wrap gap-2">
@@ -160,6 +183,15 @@ export function NewCarForm({ url, options }: { url: string; options: FieldOption
               >
                 View existing car instead
               </Link>
+              <button
+                type="button"
+                onClick={handleRelist}
+                disabled={pending}
+                title="Update the existing car with this new URL/details and keep its price history — the old URL is kept in its listing history."
+                className="rounded-lg border border-series-1 px-4 py-2 text-sm font-medium text-series-1 hover:bg-highlight disabled:opacity-60"
+              >
+                {pending ? "Saving…" : "Same car, re-listed here (keep history)"}
+              </button>
               <button
                 type="button"
                 onClick={handleConfirmAnyway}

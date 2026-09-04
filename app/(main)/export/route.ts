@@ -27,6 +27,11 @@ export async function GET() {
         currency: p.currency,
         recorded_at: p.recorded_at,
       })),
+      listing_history: c.listing_history.map((h) => ({
+        previous_url: h.previous_url,
+        previous_ad_placed_at: h.previous_ad_placed_at,
+        replaced_at: h.replaced_at,
+      })),
     })),
   };
 

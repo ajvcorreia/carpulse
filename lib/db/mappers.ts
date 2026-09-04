@@ -1,4 +1,4 @@
-import type { Car, PricePoint } from "@/lib/types";
+import type { Car, ListingHistoryEntry, PricePoint } from "@/lib/types";
 
 // SQLite has no boolean type — is_removed/is_favorite/is_struck_out are
 // stored as 0/1 integers. This is the one place that distinction gets
@@ -26,5 +26,9 @@ export function toCar(row: CarRow): Car {
 // Component (as page props or a Server Action's return value) has to be
 // re-spread into an actual plain object first, which is all this does.
 export function toPricePoint(row: PricePoint): PricePoint {
+  return { ...row };
+}
+
+export function toListingHistoryEntry(row: ListingHistoryEntry): ListingHistoryEntry {
   return { ...row };
 }

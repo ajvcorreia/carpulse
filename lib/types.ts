@@ -27,4 +27,12 @@ export type PricePoint = {
   created_at: string;
 };
 
-export type CarWithPrices = Car & { price_history: PricePoint[] };
+export type ListingHistoryEntry = {
+  id: string;
+  car_id: string;
+  previous_url: string;
+  previous_ad_placed_at: string | null;
+  replaced_at: string;
+};
+
+export type CarWithPrices = Car & { price_history: PricePoint[]; listing_history: ListingHistoryEntry[] };

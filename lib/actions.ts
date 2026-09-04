@@ -50,6 +50,7 @@ type DuplicateCandidate = {
   km: number | null;
   exterior_color: string | null;
   interior_color: string | null;
+  is_removed: number;
 };
 
 function findPossibleDuplicate(entry: {
@@ -64,7 +65,7 @@ function findPossibleDuplicate(entry: {
   const db = getDb();
   const candidates = db
     .prepare(
-      "select id, url, make, model, year, km, exterior_color, interior_color from cars where make = ? collate nocase and model = ? collate nocase"
+      "select id, url, make, model, year, km, exterior_color, interior_color, is_removed from cars where make = ? collate nocase and model = ? collate nocase"
     )
     .all(entry.make, entry.model) as DuplicateCandidate[];
 
@@ -78,7 +79,15 @@ function findPossibleDuplicate(entry: {
 
     const threshold = Math.max(KM_CLOSENESS_FLOOR, KM_CLOSENESS_RATIO * Math.max(entry.km, c.km));
     if (Math.abs(entry.km - c.km) <= threshold) {
-      return { id: c.id, url: c.url, make: c.make, model: c.model, year: c.year, km: c.km };
+      return {
+        id: c.id,
+        url: c.url,
+        make: c.make,
+        model: c.model,
+        year: c.year,
+        km: c.km,
+        is_removed: Boolean(c.is_removed),
+      };
     }
   }
 
@@ -137,6 +146,66 @@ export async function createCar(_prevState: unknown, formData: FormData) {
 
   revalidatePath("/");
   redirect(`/?highlight=${carId}`);
+}
+
+// Same physical car, re-listed under a new URL (e.g. a removed ad reposted
+// later) — merges into the existing car row instead of starting a fresh one,
+// so its price history stays intact. The old URL/ad-placement date aren't
+// discarded: they're archived to listing_history first, so the fact that it
+// was previously listed elsewhere stays visible on the car's page.
+export async function relistCar(_prevState: unknown, formData: FormData) {
+  const existingCarId = String(formData.get("existing_car_id") ?? "");
+  const url = String(formData.get("url") ?? "").trim();
+  const make = String(formData.get("make") ?? "").trim();
+  const model = String(formData.get("model") ?? "").trim();
+  const year = parseNumber(formData.get("year"));
+  const km = parseNumber(formData.get("km"));
+  const cylinders = parseNumber(formData.get("cylinders"));
+  const spec = String(formData.get("spec") ?? "").trim() || null;
+  const exteriorColor = String(formData.get("exterior_color") ?? "").trim() || null;
+  const interiorColor = String(formData.get("interior_color") ?? "").trim() || null;
+  const adPlacedAt = parseDate(formData.get("ad_placed_at"));
+  const price = parseNumber(formData.get("price"));
+  const recordedAt = parseDate(formData.get("recorded_at"));
+
+  if (!existingCarId || !url || !make || !model || year == null || price == null) {
+    return { error: "URL, make, model, year, and price are required." };
+  }
+
+  const db = getDb();
+
+  try {
+    withTransaction(db, () => {
+      const previous = db.prepare("select url, ad_placed_at from cars where id = ?").get(existingCarId) as
+        | { url: string; ad_placed_at: string | null }
+        | undefined;
+      if (!previous) throw new Error("That car no longer exists.");
+
+      db.prepare(
+        `update cars set url = ?, make = ?, model = ?, year = ?, km = ?, cylinders = ?, spec = ?,
+         exterior_color = ?, interior_color = ?, ad_placed_at = ?,
+         is_removed = 0, is_struck_out = 0, strike_out_reason = null
+         where id = ?`
+      ).run(url, make, model, year, km, cylinders, spec, exteriorColor, interiorColor, adPlacedAt, existingCarId);
+
+      db.prepare(
+        "insert into listing_history (id, car_id, previous_url, previous_ad_placed_at) values (?, ?, ?, ?)"
+      ).run(randomUUID(), existingCarId, previous.url, previous.ad_placed_at);
+
+      insertPricePoint(db, existingCarId, price, recordedAt);
+    });
+  } catch (err) {
+    return {
+      error: isUniqueViolation(err)
+        ? "Another tracked car already has that URL."
+        : err instanceof Error
+          ? err.message
+          : "Could not relist the car.",
+    };
+  }
+
+  revalidatePath("/");
+  redirect(`/?highlight=${existingCarId}`);
 }
 
 export async function updateCar(_prevState: unknown, formData: FormData) {
@@ -343,6 +412,12 @@ const importPriceSchema = z.object({
   recorded_at: z.string().min(1),
 });
 
+const importListingHistorySchema = z.object({
+  previous_url: z.string().url(),
+  previous_ad_placed_at: z.string().nullable().optional(),
+  replaced_at: z.string().min(1),
+});
+
 const importCarSchema = z.object({
   url: z.string().url(),
   make: z.string().min(1),
@@ -360,6 +435,7 @@ const importCarSchema = z.object({
   is_struck_out: z.boolean().optional(),
   strike_out_reason: z.string().nullable().optional(),
   price_history: z.array(importPriceSchema).default([]),
+  listing_history: z.array(importListingHistorySchema).default([]),
 });
 
 const importFileSchema = z.object({
@@ -401,6 +477,10 @@ export async function importData(_prevState: unknown, formData: FormData) {
   const existingPricesStmt = db.prepare("select price, recorded_at from price_history where car_id = ?");
   const insertPrice = db.prepare(
     "insert into price_history (id, car_id, price, currency, recorded_at) values (?, ?, ?, ?, ?)"
+  );
+  const existingListingsStmt = db.prepare("select previous_url from listing_history where car_id = ?");
+  const insertListing = db.prepare(
+    "insert into listing_history (id, car_id, previous_url, previous_ad_placed_at, replaced_at) values (?, ?, ?, ?, ?)"
   );
 
   withTransaction(db, () => {
@@ -444,6 +524,17 @@ export async function importData(_prevState: unknown, formData: FormData) {
       for (const p of newEntries) {
         insertPrice.run(randomUUID(), carId, p.price, p.currency, p.recorded_at);
         pricesAdded++;
+      }
+
+      if (entry.listing_history.length === 0) continue;
+
+      const existingUrls = new Set(
+        (existingListingsStmt.all(carId) as { previous_url: string }[]).map((l) => l.previous_url)
+      );
+
+      for (const h of entry.listing_history) {
+        if (existingUrls.has(h.previous_url)) continue;
+        insertListing.run(randomUUID(), carId, h.previous_url, h.previous_ad_placed_at ?? null, h.replaced_at);
       }
     }
   });

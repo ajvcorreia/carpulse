@@ -1,6 +1,6 @@
 import { getDb } from "@/lib/db/client";
-import { toCar, toPricePoint } from "@/lib/db/mappers";
-import type { Car, CarWithPrices, PricePoint } from "@/lib/types";
+import { toCar, toListingHistoryEntry, toPricePoint } from "@/lib/db/mappers";
+import type { Car, CarWithPrices, ListingHistoryEntry, PricePoint } from "@/lib/types";
 
 type RawCarRow = Omit<Car, "is_removed" | "is_favorite" | "is_struck_out"> & {
   is_removed: number;
@@ -31,7 +31,26 @@ function attachPriceHistory(rawCars: RawCarRow[]): CarWithPrices[] {
     else byCarId.set(point.car_id, [point]);
   }
 
-  return rawCars.map((row) => ({ ...toCar(row), price_history: byCarId.get(row.id) ?? [] }));
+  const listings = (
+    db
+      .prepare(
+        `select * from listing_history where car_id in (${placeholders}) order by replaced_at asc`
+      )
+      .all(...rawCars.map((c) => c.id)) as ListingHistoryEntry[]
+  ).map(toListingHistoryEntry);
+
+  const listingsByCarId = new Map<string, ListingHistoryEntry[]>();
+  for (const entry of listings) {
+    const list = listingsByCarId.get(entry.car_id);
+    if (list) list.push(entry);
+    else listingsByCarId.set(entry.car_id, [entry]);
+  }
+
+  return rawCars.map((row) => ({
+    ...toCar(row),
+    price_history: byCarId.get(row.id) ?? [],
+    listing_history: listingsByCarId.get(row.id) ?? [],
+  }));
 }
 
 export async function getCarsWithPrices(): Promise<CarWithPrices[]> {
