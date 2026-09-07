@@ -244,7 +244,7 @@ const actionButtonClass =
 // collapsed row on sm+ screens, so values line up into real columns like a
 // table even though each row is still a single expandable card.
 const DESKTOP_GRID_COLS =
-  "sm:grid-cols-[2.5rem_5rem_minmax(10rem,1fr)_6rem_3.5rem_6rem_5rem_5rem_5rem_3rem_6rem_4rem_7.5rem_1.5rem]";
+  "sm:grid-cols-[2rem_2.5rem_5rem_minmax(10rem,1fr)_6rem_3.5rem_6rem_5rem_5rem_5rem_3rem_6rem_4rem_7.5rem_1.5rem]";
 
 function FilterField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -671,9 +671,16 @@ export function CarsTable({
         ) : null}
       </div>
 
+      <p className="text-sm text-text-secondary">
+        {hasActiveFilters
+          ? `Showing ${sortedRows.length} of ${cars.length} cars`
+          : `${sortedRows.length} car${sortedRows.length === 1 ? "" : "s"}`}
+      </p>
+
       {/* Desktop: clickable column headers, same as the columns each card's
           collapsed row lines up into. */}
       <div className={`hidden sm:grid sm:items-center sm:gap-x-3 sm:px-3 ${DESKTOP_GRID_COLS}`}>
+        <span className="text-xs font-medium text-text-secondary">#</span>
         {HEADERS.map((h) => (
           <button
             key={h.key}
@@ -713,6 +720,11 @@ export function CarsTable({
                     isExpanded ? "bg-surface" : ""
                   }`}
                 >
+                  {/* Row number — shown on mobile and desktop alike, so it's
+                      always clear where a car sits in the current (filtered,
+                      sorted) list. */}
+                  <span className="tabular-nums text-xs text-text-muted sm:text-sm">{index + 1}</span>
+
                   {/* Favorite — desktop only, its own cell, interactive
                       (stopPropagation so it doesn't also toggle the row). */}
                   <div className="hidden sm:flex sm:items-center" onClick={(e) => e.stopPropagation()}>
