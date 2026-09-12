@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PriceChart } from "@/components/PriceChart";
+import { ComparisonChart } from "@/components/ComparisonChart";
 import { PriceHistoryList } from "@/components/PriceHistoryList";
 import { FavoriteToggle } from "@/components/FavoriteToggle";
 import { InlineAddPriceForm } from "@/components/InlineAddPriceForm";
@@ -676,6 +677,13 @@ export function CarsTable({
           ? `Showing ${sortedRows.length} of ${cars.length} cars`
           : `${sortedRows.length} car${sortedRows.length === 1 ? "" : "s"}`}
       </p>
+
+      {/* Only meaningful once Make + Model narrow the list to the same car
+          across multiple listings — that's what makes overlaying their price
+          histories a useful comparison rather than noise. */}
+      {filters.make && filters.model && filteredRows.length >= 2 ? (
+        <ComparisonChart cars={filteredRows.map((r) => r.car)} />
+      ) : null}
 
       {/* Desktop: clickable column headers, same as the columns each card's
           collapsed row lines up into. */}
