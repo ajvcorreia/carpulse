@@ -6,6 +6,8 @@ import {
   Line,
   BarChart,
   Bar,
+  ScatterChart,
+  Scatter,
   Cell,
   LabelList,
   XAxis,
@@ -16,9 +18,10 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { format } from "date-fns";
+import { daysListed } from "@/lib/format";
 import type { CarWithPrices } from "@/lib/types";
 
-type Mode = "history" | "current";
+type Mode = "history" | "current" | "km" | "drop" | "days";
 
 // A fixed, colorblind-safe hue order (Okabe-Ito plus two extensions) so a
 // given car keeps the same color across renders regardless of sort order —
@@ -66,12 +69,30 @@ function assignColors(carIds: string[]): Map<string, string> {
   return colors;
 }
 
+// A star prefix is the cheapest way to make a favorited car stand out
+// consistently everywhere its label appears (legend, axis, tooltip) without
+// a whole separate "favorites vs. the field" chart.
 function carLabel(car: CarWithPrices) {
-  return `${car.year} · ${car.km != null ? `${car.km.toLocaleString()} km` : "no KM"}`;
+  const base = `${car.year} · ${car.km != null ? `${car.km.toLocaleString()} km` : "no KM"}`;
+  return car.is_favorite ? `★ ${base}` : base;
 }
 
 function formatCurrency(value: number) {
   return value.toLocaleString(undefined, { style: "currency", currency: "AED", maximumFractionDigits: 0 });
+}
+
+// Signed price change since the car's first recorded price — negative means
+// the price has come down, which is what "price drop %" and the days-listed
+// scatter both rank/plot by.
+function priceChangePct(car: CarWithPrices): number | null {
+  if (car.price_history.length < 2) return null;
+  const first = car.price_history[0].price;
+  const last = car.price_history[car.price_history.length - 1].price;
+  return ((last - first) / first) * 100;
+}
+
+function formatPercent(value: number) {
+  return `${value > 0 ? "+" : ""}${value.toFixed(1)}%`;
 }
 
 function CurrentPriceTooltip({
@@ -87,6 +108,71 @@ function CurrentPriceTooltip({
     <div className="rounded-md border border-border bg-surface px-3 py-2 text-sm shadow-sm">
       <div className="text-text-secondary">{point.label}</div>
       <div className="tabular-nums font-medium text-text-primary">{formatCurrency(point.price)}</div>
+    </div>
+  );
+}
+
+function DropTooltip({
+  active,
+  payload,
+}: {
+  active?: boolean;
+  payload?: Array<{ payload: { label: string; changePct: number } }>;
+}) {
+  if (!active || !payload?.length) return null;
+  const point = payload[0].payload;
+  return (
+    <div className="rounded-md border border-border bg-surface px-3 py-2 text-sm shadow-sm">
+      <div className="text-text-secondary">{point.label}</div>
+      <div className="tabular-nums font-medium text-text-primary">
+        {formatPercent(point.changePct)} since first tracked
+      </div>
+    </div>
+  );
+}
+
+function KmScatterTooltip({
+  active,
+  payload,
+  cars,
+}: {
+  active?: boolean;
+  payload?: Array<{ payload: { id: string; km: number; price: number } }>;
+  cars: CarWithPrices[];
+}) {
+  if (!active || !payload?.length) return null;
+  const point = payload[0].payload;
+  const car = cars.find((c) => c.id === point.id);
+  if (!car) return null;
+  return (
+    <div className="rounded-md border border-border bg-surface px-3 py-2 text-sm shadow-sm">
+      <div className="text-text-secondary">{carLabel(car)}</div>
+      <div className="tabular-nums font-medium text-text-primary">
+        {point.km.toLocaleString()} km · {formatCurrency(point.price)}
+      </div>
+    </div>
+  );
+}
+
+function DaysScatterTooltip({
+  active,
+  payload,
+  cars,
+}: {
+  active?: boolean;
+  payload?: Array<{ payload: { id: string; days: number; changePct: number } }>;
+  cars: CarWithPrices[];
+}) {
+  if (!active || !payload?.length) return null;
+  const point = payload[0].payload;
+  const car = cars.find((c) => c.id === point.id);
+  if (!car) return null;
+  return (
+    <div className="rounded-md border border-border bg-surface px-3 py-2 text-sm shadow-sm">
+      <div className="text-text-secondary">{carLabel(car)}</div>
+      <div className="tabular-nums font-medium text-text-primary">
+        {point.days} day{point.days === 1 ? "" : "s"} listed · {formatPercent(point.changePct)}
+      </div>
     </div>
   );
 }
@@ -123,10 +209,9 @@ function ComparisonTooltip({
   );
 }
 
-const modeButtonClass = (active: boolean) =>
-  `rounded-md px-2 py-1 text-xs font-medium ${
-    active ? "bg-series-1 text-white" : "text-text-secondary hover:text-text-primary"
-  }`;
+const selectClass =
+  "rounded-lg border border-border bg-surface px-2 py-1.5 text-xs outline-none focus:border-series-1";
+const axisTick = { fill: "var(--text-muted)", fontSize: 12 };
 
 export function ComparisonChart({ cars }: { cars: CarWithPrices[] }) {
   const [mode, setMode] = useState<Mode>("history");
@@ -142,7 +227,7 @@ export function ComparisonChart({ cars }: { cars: CarWithPrices[] }) {
   const min = Math.min(...allPrices);
   const max = Math.max(...allPrices);
   const padding = Math.max((max - min) * 0.15, max * 0.02, 1);
-  const yDomain: [number, number] = [Math.max(0, Math.floor(min - padding)), Math.ceil(max + padding)];
+  const priceDomain: [number, number] = [Math.max(0, Math.floor(min - padding)), Math.ceil(max + padding)];
 
   // One merged row per distinct recorded_at across every shown car; each
   // car's own key is only present on dates it actually has a price for.
@@ -168,20 +253,40 @@ export function ComparisonChart({ cars }: { cars: CarWithPrices[] }) {
     }))
     .sort((a, b) => a.price - b.price);
 
+  const kmData = shown
+    .filter((c) => c.km != null)
+    .map((car) => ({ id: car.id, km: car.km as number, price: car.price_history[car.price_history.length - 1].price }));
+  const kmExcluded = shown.length - kmData.length;
+
+  // Biggest drop first (most negative change) — same "best deal at the top"
+  // convention as the current-price ranking.
+  const dropData = shown
+    .map((car) => ({ id: car.id, label: carLabel(car), changePct: priceChangePct(car) }))
+    .filter((d): d is { id: string; label: string; changePct: number } => d.changePct != null)
+    .sort((a, b) => a.changePct - b.changePct);
+  const dropExcluded = shown.length - dropData.length;
+  const dropValues = dropData.map((d) => d.changePct);
+  const dropMin = dropValues.length ? Math.min(0, ...dropValues) : 0;
+  const dropMax = dropValues.length ? Math.max(0, ...dropValues) : 0;
+
+  const daysData = shown
+    .map((car) => ({ id: car.id, days: daysListed(car.ad_placed_at), changePct: priceChangePct(car) }))
+    .filter((d): d is { id: string; days: number; changePct: number } => d.days != null && d.changePct != null);
+  const daysExcluded = shown.length - daysData.length;
+
   return (
     <div className="space-y-2 rounded-lg border border-border bg-surface p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-medium text-text-secondary">
           Comparing {shown.length} car{shown.length === 1 ? "" : "s"}
         </h2>
-        <div className="flex items-center gap-0.5 rounded-lg border border-border p-0.5">
-          <button type="button" onClick={() => setMode("history")} className={modeButtonClass(mode === "history")}>
-            Over time
-          </button>
-          <button type="button" onClick={() => setMode("current")} className={modeButtonClass(mode === "current")}>
-            Current price
-          </button>
-        </div>
+        <select value={mode} onChange={(e) => setMode(e.target.value as Mode)} className={selectClass}>
+          <option value="history">Over time</option>
+          <option value="current">Current price</option>
+          <option value="km">Price vs KM</option>
+          <option value="drop">Price drop %</option>
+          <option value="days">Days listed vs price</option>
+        </select>
       </div>
 
       <div className="h-72 w-full">
@@ -193,15 +298,15 @@ export function ComparisonChart({ cars }: { cars: CarWithPrices[] }) {
                 dataKey="recorded_at"
                 tickFormatter={(v: string) => format(new Date(v), "MMM d")}
                 stroke="var(--baseline)"
-                tick={{ fill: "var(--text-muted)", fontSize: 12 }}
+                tick={axisTick}
                 tickLine={false}
                 axisLine={{ stroke: "var(--baseline)" }}
               />
               <YAxis
                 width={64}
-                domain={yDomain}
+                domain={priceDomain}
                 stroke="var(--baseline)"
-                tick={{ fill: "var(--text-muted)", fontSize: 12 }}
+                tick={axisTick}
                 tickLine={false}
                 axisLine={false}
                 tickFormatter={(v: number) => v.toLocaleString()}
@@ -232,7 +337,7 @@ export function ComparisonChart({ cars }: { cars: CarWithPrices[] }) {
                 />
               ))}
             </LineChart>
-          ) : (
+          ) : mode === "current" ? (
             <BarChart data={currentData} layout="vertical" margin={{ top: 8, right: 64, bottom: 0, left: 0 }}>
               <CartesianGrid stroke="var(--gridline)" strokeWidth={1} horizontal={false} />
               <XAxis
@@ -242,7 +347,7 @@ export function ComparisonChart({ cars }: { cars: CarWithPrices[] }) {
                 // end instead of getting clipped by the plot edge.
                 domain={[0, (dataMax: number) => Math.ceil(dataMax * 1.2)]}
                 stroke="var(--baseline)"
-                tick={{ fill: "var(--text-muted)", fontSize: 12 }}
+                tick={axisTick}
                 tickLine={false}
                 axisLine={{ stroke: "var(--baseline)" }}
                 tickFormatter={(v: number) => v.toLocaleString()}
@@ -252,7 +357,7 @@ export function ComparisonChart({ cars }: { cars: CarWithPrices[] }) {
                 dataKey="label"
                 width={130}
                 stroke="var(--baseline)"
-                tick={{ fill: "var(--text-muted)", fontSize: 12 }}
+                tick={axisTick}
                 tickLine={false}
                 axisLine={false}
               />
@@ -270,9 +375,123 @@ export function ComparisonChart({ cars }: { cars: CarWithPrices[] }) {
                 />
               </Bar>
             </BarChart>
+          ) : mode === "km" ? (
+            <ScatterChart margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
+              <CartesianGrid stroke="var(--gridline)" strokeWidth={1} />
+              <XAxis
+                type="number"
+                dataKey="km"
+                name="KM"
+                domain={["dataMin", "dataMax"]}
+                stroke="var(--baseline)"
+                tick={axisTick}
+                tickLine={false}
+                axisLine={{ stroke: "var(--baseline)" }}
+                tickFormatter={(v: number) => v.toLocaleString()}
+              />
+              <YAxis
+                type="number"
+                dataKey="price"
+                name="Price"
+                width={64}
+                domain={priceDomain}
+                stroke="var(--baseline)"
+                tick={axisTick}
+                tickLine={false}
+                axisLine={false}
+                tickFormatter={(v: number) => v.toLocaleString()}
+              />
+              <Tooltip content={<KmScatterTooltip cars={shown} />} cursor={{ strokeDasharray: "3 3" }} />
+              <Scatter data={kmData} isAnimationActive={false}>
+                {kmData.map((d) => (
+                  <Cell key={d.id} fill={colorFor.get(d.id)} />
+                ))}
+              </Scatter>
+            </ScatterChart>
+          ) : mode === "drop" ? (
+            <BarChart data={dropData} layout="vertical" margin={{ top: 8, right: 64, bottom: 0, left: 16 }}>
+              <CartesianGrid stroke="var(--gridline)" strokeWidth={1} horizontal={false} />
+              <XAxis
+                type="number"
+                domain={[
+                  (dataMin: number) => Math.floor(Math.min(dropMin, dataMin) * 1.2),
+                  (dataMax: number) => Math.ceil(Math.max(dropMax, dataMax) * 1.2 || 1),
+                ]}
+                stroke="var(--baseline)"
+                tick={axisTick}
+                tickLine={false}
+                axisLine={{ stroke: "var(--baseline)" }}
+                tickFormatter={(v: number) => `${v}%`}
+              />
+              <YAxis
+                type="category"
+                dataKey="label"
+                width={130}
+                stroke="var(--baseline)"
+                tick={axisTick}
+                tickLine={false}
+                axisLine={false}
+              />
+              <Tooltip content={<DropTooltip />} cursor={{ fill: "var(--gridline)" }} />
+              <Bar dataKey="changePct" radius={[0, 4, 4, 0]} isAnimationActive={false}>
+                {dropData.map((d) => (
+                  <Cell key={d.id} fill={colorFor.get(d.id)} />
+                ))}
+                <LabelList
+                  dataKey="changePct"
+                  position="right"
+                  formatter={(v) => (typeof v === "number" ? formatPercent(v) : "")}
+                  fill="var(--text-secondary)"
+                  fontSize={12}
+                />
+              </Bar>
+            </BarChart>
+          ) : (
+            <ScatterChart margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
+              <CartesianGrid stroke="var(--gridline)" strokeWidth={1} />
+              <XAxis
+                type="number"
+                dataKey="days"
+                name="Days listed"
+                domain={[0, "dataMax"]}
+                stroke="var(--baseline)"
+                tick={axisTick}
+                tickLine={false}
+                axisLine={{ stroke: "var(--baseline)" }}
+              />
+              <YAxis
+                type="number"
+                dataKey="changePct"
+                name="Price change"
+                width={56}
+                stroke="var(--baseline)"
+                tick={axisTick}
+                tickLine={false}
+                axisLine={false}
+                tickFormatter={(v: number) => `${v}%`}
+              />
+              <Tooltip content={<DaysScatterTooltip cars={shown} />} cursor={{ strokeDasharray: "3 3" }} />
+              <Scatter data={daysData} isAnimationActive={false}>
+                {daysData.map((d) => (
+                  <Cell key={d.id} fill={colorFor.get(d.id)} />
+                ))}
+              </Scatter>
+            </ScatterChart>
           )}
         </ResponsiveContainer>
       </div>
+
+      {mode === "km" && kmExcluded > 0 ? (
+        <p className="text-xs text-text-muted">{kmExcluded} car(s) hidden — no KM recorded.</p>
+      ) : null}
+      {mode === "drop" && dropExcluded > 0 ? (
+        <p className="text-xs text-text-muted">{dropExcluded} car(s) hidden — only one price recorded so far.</p>
+      ) : null}
+      {mode === "days" && daysExcluded > 0 ? (
+        <p className="text-xs text-text-muted">
+          {daysExcluded} car(s) hidden — needs both an ad-placement date and a second price.
+        </p>
+      ) : null}
       {hiddenCount > 0 ? (
         <p className="text-xs text-text-muted">
           +{hiddenCount} more not shown — narrow the filters to compare fewer at once.

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PriceChart } from "@/components/PriceChart";
 import { ComparisonChart } from "@/components/ComparisonChart";
+import { ModelComparisonChart } from "@/components/ModelComparisonChart";
 import { PriceHistoryList } from "@/components/PriceHistoryList";
 import { FavoriteToggle } from "@/components/FavoriteToggle";
 import { InlineAddPriceForm } from "@/components/InlineAddPriceForm";
@@ -678,9 +679,12 @@ export function CarsTable({
           : `${sortedRows.length} car${sortedRows.length === 1 ? "" : "s"}`}
       </p>
 
-      {/* Only meaningful once Make + Model narrow the list to the same car
-          across multiple listings — that's what makes overlaying their price
-          histories a useful comparison rather than noise. */}
+      {/* Make chosen but not yet Model: compare average price across that
+          make's trims. Once Model narrows it to the same car across
+          multiple listings, switch to the full per-car comparison instead. */}
+      {filters.make && !filters.model ? (
+        <ModelComparisonChart make={filters.make} cars={filteredRows.map((r) => r.car)} />
+      ) : null}
       {filters.make && filters.model && filteredRows.length >= 2 ? (
         <ComparisonChart cars={filteredRows.map((r) => r.car)} />
       ) : null}
