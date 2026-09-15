@@ -2,30 +2,53 @@
 
 import { useState } from "react";
 
-export function CopyLinkButton({ url, className }: { url: string; className?: string }) {
-  const [copied, setCopied] = useState(false);
-
-  async function handleCopy(e: React.MouseEvent) {
-    e.stopPropagation();
+// navigator.clipboard only exists in a secure context (https:, or
+// http://localhost) — this app is normally reached over plain HTTP via a LAN
+// IP, which the browser treats as insecure, so that API is undefined there
+// and writeText throws immediately. The old-school execCommand("copy") via a
+// hidden textarea still works in that case, so it's the real path this app
+// needs, not just a defensive fallback.
+async function copyToClipboard(text: string): Promise<boolean> {
+  if (navigator.clipboard && window.isSecureContext) {
     try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      await navigator.clipboard.writeText(text);
+      return true;
     } catch {
-      // Clipboard API unavailable (non-secure context, permissions denied) —
-      // nothing sensible to fall back to, so just leave the button inert.
+      // fall through to the legacy method below
     }
   }
 
+  try {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(textarea);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+export function CopyLinkButton({ url, className }: { url: string; className?: string }) {
+  const [status, setStatus] = useState<"idle" | "copied" | "failed">("idle");
+
+  async function handleCopy(e: React.MouseEvent) {
+    e.stopPropagation();
+    const ok = await copyToClipboard(url);
+    setStatus(ok ? "copied" : "failed");
+    setTimeout(() => setStatus("idle"), 1500);
+  }
+
+  const label = status === "copied" ? "Copied!" : status === "failed" ? "Couldn't copy" : "Copy listing link";
+
   return (
-    <button
-      type="button"
-      onClick={handleCopy}
-      title={copied ? "Copied!" : "Copy listing link"}
-      aria-label="Copy listing link"
-      className={className}
-    >
-      {copied ? "✓" : "🔗"}
+    <button type="button" onClick={handleCopy} title={label} aria-label="Copy listing link" className={className}>
+      {status === "copied" ? "✓" : status === "failed" ? "✕" : "🔗"}
     </button>
   );
 }
