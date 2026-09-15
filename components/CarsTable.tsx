@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { PriceChart } from "@/components/PriceChart";
 import { ComparisonChart } from "@/components/ComparisonChart";
 import { ModelComparisonChart } from "@/components/ModelComparisonChart";
+import { CopyLinkButton } from "@/components/CopyLinkButton";
 import { PriceHistoryList } from "@/components/PriceHistoryList";
 import { FavoriteToggle } from "@/components/FavoriteToggle";
 import { InlineAddPriceForm } from "@/components/InlineAddPriceForm";
@@ -246,7 +247,7 @@ const actionButtonClass =
 // collapsed row on sm+ screens, so values line up into real columns like a
 // table even though each row is still a single expandable card.
 const DESKTOP_GRID_COLS =
-  "sm:grid-cols-[2rem_2.5rem_5rem_minmax(10rem,1fr)_6rem_3.5rem_6rem_5rem_5rem_5rem_3rem_6rem_4rem_7.5rem_1.5rem]";
+  "sm:grid-cols-[2rem_2.5rem_5rem_minmax(10rem,1fr)_6rem_3.5rem_6rem_5rem_5rem_5rem_3rem_6rem_4rem_7.5rem_1.5rem_1.75rem]";
 
 function FilterField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -707,6 +708,7 @@ export function CarsTable({
           </button>
         ))}
         <span />
+        <span />
       </div>
 
       {sortedRows.length === 0 ? (
@@ -815,6 +817,14 @@ export function CarsTable({
 
                     <span className="text-text-muted">{isExpanded ? "▲" : "▼"}</span>
                   </button>
+
+                  {/* Sibling of the toggle button, not nested inside it —
+                      copying the link shouldn't also expand/collapse the
+                      card. Visible on mobile and desktop alike. */}
+                  <CopyLinkButton
+                    url={car.url}
+                    className="text-text-muted hover:text-text-primary"
+                  />
                 </div>
 
                 {isExpanded ? (
