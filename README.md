@@ -18,10 +18,11 @@ crawling.
 
 ## Stack
 
-Next.js (App Router) + SQLite (via Node's built-in `node:sqlite`) — no auth.
-Single-user with no login: access control is the VM being on a private
-network, not an app login. Don't expose this beyond that network without
-adding auth back. The whole database is one file; back it up by copying it.
+Next.js (App Router) + SQLite (via Node's built-in `node:sqlite`). Single-user,
+no accounts. By default access control is just the VM being on a private
+network; set `AUTH_USERNAME`/`AUTH_PASSWORD` (see below) to put a login
+prompt in front of the UI too. The whole database is one file; back it up by
+copying it.
 
 ## Local development
 
@@ -49,6 +50,18 @@ docker compose up -d
 Pulls `ajvcorreia/carpulse:latest` and stores the database in the
 `carpulse-data` named volume. To build from source instead, uncomment
 `build: .` in `docker-compose.yml`.
+
+To require a login (HTTP Basic Auth) for the UI, also set `AUTH_USERNAME`
+and `AUTH_PASSWORD` in `.env`:
+
+```bash
+echo "AUTH_USERNAME=your-username" >> .env
+echo "AUTH_PASSWORD=your-password" >> .env
+```
+
+Leave either unset and the app stays open to anyone who can reach it, same
+as before. This doesn't cover `/api/*` — that's gated separately by
+`CARPULSE_API_KEY`.
 
 ### Plain `docker run`
 
