@@ -48,8 +48,11 @@ type DuplicateCandidate = {
   model: string;
   year: number;
   km: number | null;
+  cylinders: number | null;
+  spec: string | null;
   exterior_color: string | null;
   interior_color: string | null;
+  ad_placed_at: string | null;
   is_removed: number;
 };
 
@@ -65,7 +68,8 @@ function findPossibleDuplicate(entry: {
   const db = getDb();
   const candidates = db
     .prepare(
-      "select id, url, make, model, year, km, exterior_color, interior_color, is_removed from cars where make = ? collate nocase and model = ? collate nocase"
+      `select id, url, make, model, year, km, cylinders, spec, exterior_color, interior_color, ad_placed_at, is_removed
+       from cars where make = ? collate nocase and model = ? collate nocase`
     )
     .all(entry.make, entry.model) as DuplicateCandidate[];
 
@@ -79,6 +83,15 @@ function findPossibleDuplicate(entry: {
 
     const threshold = Math.max(KM_CLOSENESS_FLOOR, KM_CLOSENESS_RATIO * Math.max(entry.km, c.km));
     if (Math.abs(entry.km - c.km) <= threshold) {
+      // Fetched only for the one matched candidate, not every candidate in
+      // the loop — the existing-vs-new comparison shown to the user wants
+      // its latest tracked price alongside the rest of its specs.
+      const latest = db
+        .prepare(
+          "select price, currency from price_history where car_id = ? order by recorded_at desc, created_at desc limit 1"
+        )
+        .get(c.id) as { price: number; currency: string } | undefined;
+
       return {
         id: c.id,
         url: c.url,
@@ -86,7 +99,14 @@ function findPossibleDuplicate(entry: {
         model: c.model,
         year: c.year,
         km: c.km,
+        cylinders: c.cylinders,
+        spec: c.spec,
+        exterior_color: c.exterior_color,
+        interior_color: c.interior_color,
+        ad_placed_at: c.ad_placed_at,
         is_removed: Boolean(c.is_removed),
+        latest_price: latest?.price ?? null,
+        latest_currency: latest?.currency ?? null,
       };
     }
   }

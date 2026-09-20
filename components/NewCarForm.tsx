@@ -4,6 +4,7 @@ import { useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { AutocompleteInput } from "@/components/AutocompleteInput";
 import { checkCarDuplicate, createCar, relistCar } from "@/lib/actions";
+import { formatPrice } from "@/lib/format";
 
 function Field({
   id,
@@ -34,13 +35,73 @@ type Duplicate = {
   model: string;
   year: number;
   km: number;
+  cylinders: number | null;
+  spec: string | null;
+  exterior_color: string | null;
+  interior_color: string | null;
+  ad_placed_at: string | null;
   is_removed: boolean;
+  latest_price: number | null;
+  latest_currency: string | null;
 };
 type FieldOptions = { makes: string[]; specs: string[]; modelsByMake: Record<string, string[]> };
+
+// What the user just typed into the form, captured at the moment a
+// duplicate is detected — so the comparison table can show it next to the
+// existing car's specs without re-reading the (uncontrolled) inputs later.
+type NewEntry = {
+  year: string;
+  km: string;
+  cylinders: string;
+  spec: string;
+  exterior_color: string;
+  interior_color: string;
+  ad_placed_at: string;
+  price: string;
+};
+
+function normalizeCompare(v: string | number | null | undefined) {
+  return v == null ? "" : String(v).trim().toLowerCase();
+}
+
+type CompareRow = { label: string; existing: string; entered: string; flagDiff: boolean };
+
+// flagDiff is only set for fields that genuinely signal "maybe not the same
+// car" when they differ (year/cylinders/spec — colors are already guaranteed
+// equal by the match itself). KM, ad-placement date, and price are expected
+// to drift for a real re-listing, so they're shown without the same alarm
+// styling even when they differ.
+function buildCompareRows(duplicate: Duplicate, entry: NewEntry): CompareRow[] {
+  function row(label: string, existingRaw: string | number | null, enteredRaw: string, flag: boolean): CompareRow {
+    return {
+      label,
+      existing: existingRaw != null && String(existingRaw) !== "" ? String(existingRaw) : "—",
+      entered: enteredRaw !== "" ? enteredRaw : "—",
+      flagDiff: flag && normalizeCompare(existingRaw) !== normalizeCompare(enteredRaw),
+    };
+  }
+
+  const existingPrice =
+    duplicate.latest_price != null ? formatPrice(duplicate.latest_price, duplicate.latest_currency ?? "AED") : null;
+  const enteredPriceNum = Number(entry.price);
+  const enteredPrice = entry.price && Number.isFinite(enteredPriceNum) ? formatPrice(enteredPriceNum, "AED") : "";
+
+  return [
+    row("Year", duplicate.year, entry.year, true),
+    row("KM", duplicate.km.toLocaleString(), entry.km ? Number(entry.km).toLocaleString() : "", false),
+    row("Cylinders", duplicate.cylinders, entry.cylinders, true),
+    row("Spec", duplicate.spec, entry.spec, true),
+    row("Ext. color", duplicate.exterior_color, entry.exterior_color, false),
+    row("Int. color", duplicate.interior_color, entry.interior_color, false),
+    row("Ad placed", duplicate.ad_placed_at, entry.ad_placed_at, false),
+    row("Price", existingPrice, enteredPrice, false),
+  ];
+}
 
 export function NewCarForm({ url, options }: { url: string; options: FieldOptions }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [duplicate, setDuplicate] = useState<Duplicate | null>(null);
+  const [newEntry, setNewEntry] = useState<NewEntry | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [make, setMake] = useState("");
@@ -73,6 +134,16 @@ export function NewCarForm({ url, options }: { url: string; options: FieldOption
       const found = await checkCarDuplicate(formData);
       if (found) {
         setDuplicate(found);
+        setNewEntry({
+          year: String(formData.get("year") ?? ""),
+          km: String(formData.get("km") ?? ""),
+          cylinders: String(formData.get("cylinders") ?? ""),
+          spec: String(formData.get("spec") ?? ""),
+          exterior_color: String(formData.get("exterior_color") ?? ""),
+          interior_color: String(formData.get("interior_color") ?? ""),
+          ad_placed_at: String(formData.get("ad_placed_at") ?? ""),
+          price: String(formData.get("price") ?? ""),
+        });
         return;
       }
       submitForReal(formData);
@@ -176,6 +247,32 @@ export function NewCarForm({ url, options }: { url: string; options: FieldOption
               {duplicate.is_removed ? ", currently marked removed" : ""}. Probably the same car
               re-listed under a new ad.
             </p>
+
+            {newEntry ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs text-text-secondary">
+                      <th className="pb-1 pr-3 font-medium"></th>
+                      <th className="pb-1 pr-3 font-medium">Existing</th>
+                      <th className="pb-1 font-medium">New</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {buildCompareRows(duplicate, newEntry).map((r) => (
+                      <tr key={r.label} className="border-b border-border last:border-0">
+                        <td className="py-1.5 pr-3 text-text-secondary">{r.label}</td>
+                        <td className={`py-1.5 pr-3 ${r.flagDiff ? "font-medium text-critical" : ""}`}>
+                          {r.existing}
+                        </td>
+                        <td className={`py-1.5 ${r.flagDiff ? "font-medium text-critical" : ""}`}>{r.entered}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+
             <div className="flex flex-wrap gap-2">
               <Link
                 href={`/?highlight=${duplicate.id}`}
