@@ -10,6 +10,7 @@ import { PriceHistoryList } from "@/components/PriceHistoryList";
 import { FavoriteToggle } from "@/components/FavoriteToggle";
 import { InlineAddPriceForm } from "@/components/InlineAddPriceForm";
 import { EditCarForm } from "@/components/EditCarForm";
+import { MergeCarPicker } from "@/components/MergeCarPicker";
 import { markCarOpened, setCarRemovedFlag, setCarStruckOut } from "@/lib/actions";
 import { daysListed, formatDMY, formatPrice, totalDelta } from "@/lib/format";
 import { claudeInsightsUrl } from "@/lib/claude";
@@ -275,6 +276,7 @@ export function CarsTable({
   // everything else in place — no separate detail page to navigate to.
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [editingIds, setEditingIds] = useState<Set<string>>(new Set());
+  const [mergingIds, setMergingIds] = useState<Set<string>>(new Set());
   // Which row's listing was last opened — highlighted so it's obvious which
   // one you were looking at when you come back. Derived from the cars prop
   // (server data), not local/client storage.
@@ -457,6 +459,18 @@ export function CarsTable({
 
   function stopEditing(carId: string) {
     setEditingIds((ids) => {
+      const next = new Set(ids);
+      next.delete(carId);
+      return next;
+    });
+  }
+
+  function startMerging(carId: string) {
+    setMergingIds((ids) => new Set(ids).add(carId));
+  }
+
+  function stopMerging(carId: string) {
+    setMergingIds((ids) => {
       const next = new Set(ids);
       next.delete(carId);
       return next;
@@ -718,6 +732,7 @@ export function CarsTable({
           {sortedRows.map(({ car, points, latest, delta, daysListed }, index) => {
             const isExpanded = expandedIds.has(car.id);
             const isEditing = editingIds.has(car.id);
+            const isMerging = mergingIds.has(car.id);
             const nextCardId = sortedRows[index + 1]?.car.id;
 
             return (
@@ -839,11 +854,24 @@ export function CarsTable({
                         }}
                         onCancel={() => stopEditing(car.id)}
                       />
+                    ) : isMerging ? (
+                      <MergeCarPicker
+                        car={car}
+                        allCars={cars}
+                        onCancel={() => stopMerging(car.id)}
+                        onMerged={() => {
+                          stopMerging(car.id);
+                          router.refresh();
+                        }}
+                      />
                     ) : (
                       <>
                         <div className="flex flex-wrap items-center gap-2">
                           <button type="button" onClick={() => startEditing(car.id)} className={actionButtonClass}>
                             Edit details
+                          </button>
+                          <button type="button" onClick={() => startMerging(car.id)} className={actionButtonClass}>
+                            Merge with another car
                           </button>
                           {car.is_removed ? (
                             <button

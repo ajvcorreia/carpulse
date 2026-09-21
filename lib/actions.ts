@@ -228,6 +228,72 @@ export async function relistCar(_prevState: unknown, formData: FormData) {
   redirect(`/?highlight=${existingCarId}`);
 }
 
+// Two already-tracked rows turn out to be the same car — unlike relistCar
+// (triggered by the add-flow's automatic duplicate check), this is a
+// deliberate merge the user initiates from the dashboard, picking which of
+// the two keeps its url/details as the "current" record. Nothing from the
+// other car is discarded: its own current url/ad-placement date is archived
+// to listing_history (same as a relist), its price_history and
+// listing_history both get reassigned onto the kept car (exact (date,
+// price) duplicates dropped rather than doubled up in the chart), and only
+// then is its now-empty row deleted.
+export async function mergeCars(formData: FormData) {
+  const keepCarId = String(formData.get("keep_car_id") ?? "");
+  const mergeFromCarId = String(formData.get("merge_from_car_id") ?? "");
+
+  if (!keepCarId || !mergeFromCarId || keepCarId === mergeFromCarId) {
+    return { error: "Pick a different car to merge." };
+  }
+
+  const db = getDb();
+
+  try {
+    withTransaction(db, () => {
+      const mergeFrom = db.prepare("select url, ad_placed_at from cars where id = ?").get(mergeFromCarId) as
+        | { url: string; ad_placed_at: string | null }
+        | undefined;
+      const keep = db.prepare("select id from cars where id = ?").get(keepCarId) as { id: string } | undefined;
+      if (!mergeFrom || !keep) throw new Error("One of those cars no longer exists.");
+
+      db.prepare(
+        "insert into listing_history (id, car_id, previous_url, previous_ad_placed_at) values (?, ?, ?, ?)"
+      ).run(randomUUID(), keepCarId, mergeFrom.url, mergeFrom.ad_placed_at);
+
+      db.prepare("update listing_history set car_id = ? where car_id = ?").run(keepCarId, mergeFromCarId);
+
+      const existingKeys = new Set(
+        (
+          db.prepare("select recorded_at, price from price_history where car_id = ?").all(keepCarId) as {
+            recorded_at: string;
+            price: number;
+          }[]
+        ).map((p) => `${p.recorded_at}|${p.price}`)
+      );
+
+      const mergeFromPrices = db
+        .prepare("select id, recorded_at, price from price_history where car_id = ?")
+        .all(mergeFromCarId) as { id: string; recorded_at: string; price: number }[];
+
+      const deleteDuplicatePrice = db.prepare("delete from price_history where id = ?");
+      const reassignPrice = db.prepare("update price_history set car_id = ? where id = ?");
+      for (const p of mergeFromPrices) {
+        if (existingKeys.has(`${p.recorded_at}|${p.price}`)) {
+          deleteDuplicatePrice.run(p.id);
+        } else {
+          reassignPrice.run(keepCarId, p.id);
+        }
+      }
+
+      db.prepare("delete from cars where id = ?").run(mergeFromCarId);
+    });
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Could not merge these cars." };
+  }
+
+  revalidatePath("/");
+  return { success: true as const };
+}
+
 export async function updateCar(_prevState: unknown, formData: FormData) {
   const carId = String(formData.get("car_id") ?? "");
   const url = String(formData.get("url") ?? "").trim();
