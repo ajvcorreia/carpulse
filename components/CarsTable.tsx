@@ -10,7 +10,7 @@ import { PriceHistoryList } from "@/components/PriceHistoryList";
 import { FavoriteToggle } from "@/components/FavoriteToggle";
 import { InlineAddPriceForm } from "@/components/InlineAddPriceForm";
 import { EditCarForm } from "@/components/EditCarForm";
-import { MergeCarPicker } from "@/components/MergeCarPicker";
+import { MergeBanner } from "@/components/MergeBanner";
 import { markCarOpened, setCarRemovedFlag, setCarStruckOut } from "@/lib/actions";
 import { daysListed, formatDMY, formatPrice, totalDelta } from "@/lib/format";
 import { claudeInsightsUrl } from "@/lib/claude";
@@ -276,7 +276,13 @@ export function CarsTable({
   // everything else in place — no separate detail page to navigate to.
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [editingIds, setEditingIds] = useState<Set<string>>(new Set());
-  const [mergingIds, setMergingIds] = useState<Set<string>>(new Set());
+  // A merge is a single list-wide session, not per-card state: pressing
+  // "Merge with another car" on a card sets mergingFromId, which makes a
+  // checkbox appear on every other (currently filtered/visible) row so the
+  // target can be picked directly from the list instead of a dropdown.
+  const [mergingFromId, setMergingFromId] = useState<string | null>(null);
+  const [mergeTargetId, setMergeTargetId] = useState<string | null>(null);
+  const [mergeKeepId, setMergeKeepId] = useState<string | null>(null);
   // Which row's listing was last opened — highlighted so it's obvious which
   // one you were looking at when you come back. Derived from the cars prop
   // (server data), not local/client storage.
@@ -466,15 +472,34 @@ export function CarsTable({
   }
 
   function startMerging(carId: string) {
-    setMergingIds((ids) => new Set(ids).add(carId));
+    setMergingFromId(carId);
+    setMergeTargetId(null);
+    setMergeKeepId(null);
   }
 
-  function stopMerging(carId: string) {
-    setMergingIds((ids) => {
-      const next = new Set(ids);
-      next.delete(carId);
-      return next;
-    });
+  function cancelMerging() {
+    setMergingFromId(null);
+    setMergeTargetId(null);
+    setMergeKeepId(null);
+  }
+
+  // Checking a row picks it as the merge target and defaults which car to
+  // keep to whichever has the more recent ad-placed date (falling back to
+  // created_at) — overridable via the banner's radio buttons. Unchecking
+  // (the only checkbox left visible once one is picked) clears the target,
+  // which brings every other row's checkbox back.
+  function pickMergeTarget(carId: string | null) {
+    setMergeTargetId(carId);
+    if (!carId || !mergingFromId) {
+      setMergeKeepId(null);
+      return;
+    }
+    const source = cars.find((c) => c.id === mergingFromId);
+    const target = cars.find((c) => c.id === carId);
+    if (!source || !target) return;
+    const sourceDate = source.ad_placed_at ?? source.created_at;
+    const targetDate = target.ad_placed_at ?? target.created_at;
+    setMergeKeepId(targetDate > sourceDate ? target.id : source.id);
   }
 
   function toggleSort(key: SortKey) {
@@ -694,6 +719,27 @@ export function CarsTable({
           : `${sortedRows.length} car${sortedRows.length === 1 ? "" : "s"}`}
       </p>
 
+      {mergingFromId
+        ? (() => {
+            const sourceCar = cars.find((c) => c.id === mergingFromId);
+            const targetCar = mergeTargetId ? (cars.find((c) => c.id === mergeTargetId) ?? null) : null;
+            if (!sourceCar) return null;
+            return (
+              <MergeBanner
+                sourceCar={sourceCar}
+                targetCar={targetCar}
+                keepId={mergeKeepId}
+                onKeepChange={setMergeKeepId}
+                onCancel={cancelMerging}
+                onMerged={() => {
+                  cancelMerging();
+                  router.refresh();
+                }}
+              />
+            );
+          })()
+        : null}
+
       {/* Make chosen but not yet Model: compare average price across that
           make's trims. Once Model narrows it to the same car across
           multiple listings, switch to the full per-car comparison instead. */}
@@ -732,8 +778,16 @@ export function CarsTable({
           {sortedRows.map(({ car, points, latest, delta, daysListed }, index) => {
             const isExpanded = expandedIds.has(car.id);
             const isEditing = editingIds.has(car.id);
-            const isMerging = mergingIds.has(car.id);
             const nextCardId = sortedRows[index + 1]?.car.id;
+
+            // While a merge is in progress: the source car itself never
+            // gets a checkbox, and once a target is picked every other
+            // row's checkbox disappears so only one can ever be selected.
+            const isMergeSource = mergingFromId === car.id;
+            const isMergeEligible =
+              mergingFromId != null &&
+              !isMergeSource &&
+              (mergeTargetId === null || mergeTargetId === car.id);
 
             return (
               <div
@@ -741,7 +795,7 @@ export function CarsTable({
                 id={`car-${car.id}`}
                 data-testid="car-card"
                 className={`overflow-hidden rounded-lg border border-border ${
-                  selectedId === car.id ? "bg-highlight" : ""
+                  selectedId === car.id || isMergeSource ? "bg-highlight" : ""
                 }`}
               >
                 <div
@@ -751,8 +805,18 @@ export function CarsTable({
                 >
                   {/* Row number — shown on mobile and desktop alike, so it's
                       always clear where a car sits in the current (filtered,
-                      sorted) list. */}
-                  <span className="tabular-nums text-xs text-text-muted sm:text-sm">{index + 1}</span>
+                      sorted) list. Swaps to a checkbox while a merge is in
+                      progress and this row is eligible to be the target. */}
+                  {isMergeEligible ? (
+                    <input
+                      type="checkbox"
+                      checked={mergeTargetId === car.id}
+                      onChange={(e) => pickMergeTarget(e.target.checked ? car.id : null)}
+                      aria-label={`Merge with ${car.year} ${car.make} ${car.model}`}
+                    />
+                  ) : (
+                    <span className="tabular-nums text-xs text-text-muted sm:text-sm">{index + 1}</span>
+                  )}
 
                   {/* Favorite — desktop only, its own cell, interactive
                       (stopPropagation so it doesn't also toggle the row). */}
@@ -854,25 +918,17 @@ export function CarsTable({
                         }}
                         onCancel={() => stopEditing(car.id)}
                       />
-                    ) : isMerging ? (
-                      <MergeCarPicker
-                        car={car}
-                        allCars={cars}
-                        onCancel={() => stopMerging(car.id)}
-                        onMerged={() => {
-                          stopMerging(car.id);
-                          router.refresh();
-                        }}
-                      />
                     ) : (
                       <>
                         <div className="flex flex-wrap items-center gap-2">
                           <button type="button" onClick={() => startEditing(car.id)} className={actionButtonClass}>
                             Edit details
                           </button>
-                          <button type="button" onClick={() => startMerging(car.id)} className={actionButtonClass}>
-                            Merge with another car
-                          </button>
+                          {mergingFromId == null ? (
+                            <button type="button" onClick={() => startMerging(car.id)} className={actionButtonClass}>
+                              Merge with another car
+                            </button>
+                          ) : null}
                           {car.is_removed ? (
                             <button
                               type="button"
