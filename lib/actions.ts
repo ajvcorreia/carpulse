@@ -237,12 +237,31 @@ export async function relistCar(_prevState: unknown, formData: FormData) {
 // listing_history both get reassigned onto the kept car (exact (date,
 // price) duplicates dropped rather than doubled up in the chart), and only
 // then is its now-empty row deleted.
+//
+// url/ad_placed_at/km/price aren't independently pickable — they stay
+// whatever they already are on the kept car, since they're inherently tied
+// to "the current listing" rather than a detail you'd mix and match. Every
+// other detail (make/model/year/cylinders/spec/colors) is: the merge banner
+// always sends a value for these (picked per-field in its UI), which
+// replaces whatever the kept car already had.
 export async function mergeCars(formData: FormData) {
   const keepCarId = String(formData.get("keep_car_id") ?? "");
   const mergeFromCarId = String(formData.get("merge_from_car_id") ?? "");
 
   if (!keepCarId || !mergeFromCarId || keepCarId === mergeFromCarId) {
     return { error: "Pick a different car to merge." };
+  }
+
+  const make = String(formData.get("make") ?? "").trim();
+  const model = String(formData.get("model") ?? "").trim();
+  const year = parseNumber(formData.get("year"));
+  const cylinders = parseNumber(formData.get("cylinders"));
+  const spec = String(formData.get("spec") ?? "").trim() || null;
+  const exteriorColor = String(formData.get("exterior_color") ?? "").trim() || null;
+  const interiorColor = String(formData.get("interior_color") ?? "").trim() || null;
+
+  if (!make || !model || year == null) {
+    return { error: "Make, model, and year are required." };
   }
 
   const db = getDb();
@@ -283,6 +302,11 @@ export async function mergeCars(formData: FormData) {
           reassignPrice.run(keepCarId, p.id);
         }
       }
+
+      db.prepare(
+        `update cars set make = ?, model = ?, year = ?, cylinders = ?, spec = ?, exterior_color = ?, interior_color = ?
+         where id = ?`
+      ).run(make, model, year, cylinders, spec, exteriorColor, interiorColor, keepCarId);
 
       db.prepare("delete from cars where id = ?").run(mergeFromCarId);
     });
