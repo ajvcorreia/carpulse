@@ -64,20 +64,55 @@ function normalizeCompare(v: string | number | null | undefined) {
   return v == null ? "" : String(v).trim().toLowerCase();
 }
 
-type CompareRow = { label: string; existing: string; entered: string; flagDiff: boolean };
+// Everything here except dates/KM/price is independently pickable — see the
+// "Use" dropdown per row below. Make/model aren't included: the duplicate
+// match itself requires them to already be identical, so there's never
+// anything to choose between for those two.
+type PickableKey = "year" | "cylinders" | "spec" | "exterior_color" | "interior_color";
 
-// flagDiff is only set for fields that genuinely signal "maybe not the same
-// car" when they differ (year/cylinders/spec — colors are already guaranteed
-// equal by the match itself). KM, ad-placement date, and price are expected
-// to drift for a real re-listing, so they're shown without the same alarm
-// styling even when they differ.
-function buildCompareRows(duplicate: Duplicate, entry: NewEntry): CompareRow[] {
-  function row(label: string, existingRaw: string | number | null, enteredRaw: string, flag: boolean): CompareRow {
+const PICKABLE_FIELDS: {
+  key: PickableKey;
+  label: string;
+  existingValue: (d: Duplicate) => string;
+  enteredValue: (e: NewEntry) => string;
+  flag: boolean;
+}[] = [
+  { key: "year", label: "Year", existingValue: (d) => String(d.year), enteredValue: (e) => e.year, flag: true },
+  {
+    key: "cylinders",
+    label: "Cylinders",
+    existingValue: (d) => (d.cylinders != null ? String(d.cylinders) : ""),
+    enteredValue: (e) => e.cylinders,
+    flag: true,
+  },
+  { key: "spec", label: "Spec", existingValue: (d) => d.spec ?? "", enteredValue: (e) => e.spec, flag: true },
+  {
+    key: "exterior_color",
+    label: "Ext. color",
+    existingValue: (d) => d.exterior_color ?? "",
+    enteredValue: (e) => e.exterior_color,
+    flag: false,
+  },
+  {
+    key: "interior_color",
+    label: "Int. color",
+    existingValue: (d) => d.interior_color ?? "",
+    enteredValue: (e) => e.interior_color,
+    flag: false,
+  },
+];
+
+type InfoRow = { label: string; existing: string; entered: string };
+
+// KM, ad-placement date, and price aren't pickable — they're expected to
+// drift for a real re-listing (that's the point of relisting), and always
+// come from what was just typed, not cherry-picked from the old record.
+function buildInfoRows(duplicate: Duplicate, entry: NewEntry): InfoRow[] {
+  function row(label: string, existingRaw: string | number | null, enteredRaw: string): InfoRow {
     return {
       label,
       existing: existingRaw != null && String(existingRaw) !== "" ? String(existingRaw) : "—",
       entered: enteredRaw !== "" ? enteredRaw : "—",
-      flagDiff: flag && normalizeCompare(existingRaw) !== normalizeCompare(enteredRaw),
     };
   }
 
@@ -87,14 +122,9 @@ function buildCompareRows(duplicate: Duplicate, entry: NewEntry): CompareRow[] {
   const enteredPrice = entry.price && Number.isFinite(enteredPriceNum) ? formatPrice(enteredPriceNum, "AED") : "";
 
   return [
-    row("Year", duplicate.year, entry.year, true),
-    row("KM", duplicate.km.toLocaleString(), entry.km ? Number(entry.km).toLocaleString() : "", false),
-    row("Cylinders", duplicate.cylinders, entry.cylinders, true),
-    row("Spec", duplicate.spec, entry.spec, true),
-    row("Ext. color", duplicate.exterior_color, entry.exterior_color, false),
-    row("Int. color", duplicate.interior_color, entry.interior_color, false),
-    row("Ad placed", duplicate.ad_placed_at, entry.ad_placed_at, false),
-    row("Price", existingPrice, enteredPrice, false),
+    row("KM", duplicate.km.toLocaleString(), entry.km ? Number(entry.km).toLocaleString() : ""),
+    row("Ad placed", duplicate.ad_placed_at, entry.ad_placed_at),
+    row("Price", existingPrice, enteredPrice),
   ];
 }
 
@@ -102,6 +132,9 @@ export function NewCarForm({ url, options }: { url: string; options: FieldOption
   const formRef = useRef<HTMLFormElement>(null);
   const [duplicate, setDuplicate] = useState<Duplicate | null>(null);
   const [newEntry, setNewEntry] = useState<NewEntry | null>(null);
+  // Per-field picks for the relist comparison table — defaults to what was
+  // typed (unset), overridable to the existing car's value per field.
+  const [fieldOverrides, setFieldOverrides] = useState<Partial<Record<PickableKey, string>>>({});
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [make, setMake] = useState("");
@@ -162,6 +195,12 @@ export function NewCarForm({ url, options }: { url: string; options: FieldOption
     if (!formRef.current || !duplicate) return;
     const formData = new FormData(formRef.current);
     formData.set("existing_car_id", duplicate.id);
+    // Anything explicitly picked as "Existing" overrides what was typed —
+    // everything else submits as-typed, same as before this picker existed.
+    for (const field of PICKABLE_FIELDS) {
+      const override = fieldOverrides[field.key];
+      if (override != null) formData.set(field.key, override);
+    }
     setError(null);
     startTransition(async () => {
       const result = await relistCar(null, formData);
@@ -255,17 +294,46 @@ export function NewCarForm({ url, options }: { url: string; options: FieldOption
                     <tr className="text-left text-xs text-text-secondary">
                       <th className="pb-1 pr-3 font-medium"></th>
                       <th className="pb-1 pr-3 font-medium">Existing</th>
-                      <th className="pb-1 font-medium">New</th>
+                      <th className="pb-1 pr-3 font-medium">New</th>
+                      <th className="pb-1 font-medium">Use</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {buildCompareRows(duplicate, newEntry).map((r) => (
+                    {PICKABLE_FIELDS.map((field) => {
+                      const existingRaw = field.existingValue(duplicate);
+                      const enteredRaw = field.enteredValue(newEntry);
+                      const current = fieldOverrides[field.key] ?? enteredRaw;
+                      const differs = field.flag && normalizeCompare(existingRaw) !== normalizeCompare(enteredRaw);
+                      return (
+                        <tr key={field.key} className="border-b border-border last:border-0">
+                          <td className="py-1.5 pr-3 text-text-secondary">{field.label}</td>
+                          <td className={`py-1.5 pr-3 ${differs ? "font-medium text-critical" : ""}`}>
+                            {existingRaw || "—"}
+                          </td>
+                          <td className={`py-1.5 pr-3 ${differs ? "font-medium text-critical" : ""}`}>
+                            {enteredRaw || "—"}
+                          </td>
+                          <td className="py-1.5">
+                            <select
+                              value={current}
+                              onChange={(e) =>
+                                setFieldOverrides((prev) => ({ ...prev, [field.key]: e.target.value }))
+                              }
+                              className="rounded-lg border border-border bg-surface px-2 py-1 text-sm outline-none focus:border-series-1"
+                            >
+                              <option value={enteredRaw}>{enteredRaw || "—"}</option>
+                              <option value={existingRaw}>{existingRaw || "—"}</option>
+                            </select>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {buildInfoRows(duplicate, newEntry).map((r) => (
                       <tr key={r.label} className="border-b border-border last:border-0">
                         <td className="py-1.5 pr-3 text-text-secondary">{r.label}</td>
-                        <td className={`py-1.5 pr-3 ${r.flagDiff ? "font-medium text-critical" : ""}`}>
-                          {r.existing}
-                        </td>
-                        <td className={`py-1.5 ${r.flagDiff ? "font-medium text-critical" : ""}`}>{r.entered}</td>
+                        <td className="py-1.5 pr-3">{r.existing}</td>
+                        <td className="py-1.5 pr-3">{r.entered}</td>
+                        <td className="py-1.5 text-text-muted">—</td>
                       </tr>
                     ))}
                   </tbody>
