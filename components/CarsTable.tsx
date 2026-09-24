@@ -919,7 +919,7 @@ export function CarsTable({
                       {car.make} {car.model}
                       {siblings.length > 0 ? (
                         <span
-                          className="ml-1.5 rounded-full border border-series-1 px-1.5 py-0.5 text-[10px] font-normal text-series-1"
+                          className="ml-1.5 inline-block whitespace-nowrap rounded-full border border-series-1 px-1.5 py-0.5 text-[10px] font-normal text-series-1"
                           title={`Also listed at ${siblings.map((s) => siteLabel(s.url)).join(", ")}`}
                         >
                           also listed {siblings.length > 1 ? `at ${siblings.length} others` : "elsewhere"}
