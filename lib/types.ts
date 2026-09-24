@@ -16,6 +16,10 @@ export type Car = {
   is_struck_out: boolean;
   strike_out_reason: string | null;
   last_opened_at: string | null;
+  // "Also listed at" grouping — points at the group's anchor car (see
+  // lib/groups.ts). Null means either not grouped, or this car *is* the
+  // anchor (other cars point at it instead).
+  group_id: string | null;
 };
 
 export type PricePoint = {

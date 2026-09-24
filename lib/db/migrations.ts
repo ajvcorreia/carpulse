@@ -23,4 +23,13 @@ export const MIGRATIONS: { version: string; sql: string }[] = [
       create index listing_history_car_idx on listing_history (car_id, replaced_at);
     `,
   },
+  // "Also listed at" — the same physical car posted on more than one site at
+  // once, each with its own independent status/price history (unlike a
+  // relist, where one listing replaces another). group_id points at the
+  // group's anchor car; the anchor's own group_id stays null. A car with no
+  // group_id and nothing else pointing at it isn't in a group at all.
+  {
+    version: "0003_add_group_id",
+    sql: `alter table cars add column group_id text references cars (id);`,
+  },
 ];

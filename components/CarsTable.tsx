@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { PriceChart } from "@/components/PriceChart";
 import { ComparisonChart } from "@/components/ComparisonChart";
@@ -11,9 +12,11 @@ import { FavoriteToggle } from "@/components/FavoriteToggle";
 import { InlineAddPriceForm } from "@/components/InlineAddPriceForm";
 import { EditCarForm } from "@/components/EditCarForm";
 import { MergeBanner } from "@/components/MergeBanner";
-import { markCarOpened, setCarRemovedFlag, setCarStruckOut } from "@/lib/actions";
-import { daysListed, formatDMY, formatPrice, totalDelta } from "@/lib/format";
+import { LinkBanner } from "@/components/LinkBanner";
+import { markCarOpened, setCarRemovedFlag, setCarStruckOut, unlinkCar } from "@/lib/actions";
+import { daysListed, formatDMY, formatPrice, siteLabel, totalDelta } from "@/lib/format";
 import { claudeInsightsUrl } from "@/lib/claude";
+import { groupMembers } from "@/lib/groups";
 import type { CarWithPrices, PricePoint } from "@/lib/types";
 
 // How long a "you just opened this one" highlight stays live. Derived from
@@ -283,6 +286,12 @@ export function CarsTable({
   const [mergingFromId, setMergingFromId] = useState<string | null>(null);
   const [mergeTargetId, setMergeTargetId] = useState<string | null>(null);
   const [mergeKeepId, setMergeKeepId] = useState<string | null>(null);
+  // Same list-wide-session pattern as merging, for "also listed at" — kept
+  // as separate state (not a shared "picker mode") so the two features stay
+  // simple to reason about independently; each start handler clears the
+  // other so only one banner is ever active at a time.
+  const [linkingFromId, setLinkingFromId] = useState<string | null>(null);
+  const [linkTargetId, setLinkTargetId] = useState<string | null>(null);
   // Which row's listing was last opened — highlighted so it's obvious which
   // one you were looking at when you come back. Derived from the cars prop
   // (server data), not local/client storage.
@@ -475,6 +484,7 @@ export function CarsTable({
     setMergingFromId(carId);
     setMergeTargetId(null);
     setMergeKeepId(null);
+    cancelLinking();
   }
 
   function cancelMerging() {
@@ -500,6 +510,23 @@ export function CarsTable({
     const sourceDate = source.ad_placed_at ?? source.created_at;
     const targetDate = target.ad_placed_at ?? target.created_at;
     setMergeKeepId(targetDate > sourceDate ? target.id : source.id);
+  }
+
+  function startLinking(carId: string) {
+    setLinkingFromId(carId);
+    setLinkTargetId(null);
+    cancelMerging();
+  }
+
+  function cancelLinking() {
+    setLinkingFromId(null);
+    setLinkTargetId(null);
+  }
+
+  function handleUnlink(carId: string) {
+    const formData = new FormData();
+    formData.set("car_id", carId);
+    unlinkCar(formData).then(() => router.refresh());
   }
 
   function toggleSort(key: SortKey) {
@@ -740,6 +767,25 @@ export function CarsTable({
           })()
         : null}
 
+      {linkingFromId
+        ? (() => {
+            const sourceCar = cars.find((c) => c.id === linkingFromId);
+            const targetCar = linkTargetId ? (cars.find((c) => c.id === linkTargetId) ?? null) : null;
+            if (!sourceCar) return null;
+            return (
+              <LinkBanner
+                sourceCar={sourceCar}
+                targetCar={targetCar}
+                onCancel={cancelLinking}
+                onLinked={() => {
+                  cancelLinking();
+                  router.refresh();
+                }}
+              />
+            );
+          })()
+        : null}
+
       {/* Make chosen but not yet Model: compare average price across that
           make's trims. Once Model narrows it to the same car across
           multiple listings, switch to the full per-car comparison instead. */}
@@ -780,14 +826,22 @@ export function CarsTable({
             const isEditing = editingIds.has(car.id);
             const nextCardId = sortedRows[index + 1]?.car.id;
 
-            // While a merge is in progress: the source car itself never
-            // gets a checkbox, and once a target is picked every other
-            // row's checkbox disappears so only one can ever be selected.
+            // While a merge or link is in progress: the source car itself
+            // never gets a checkbox, and once a target is picked every
+            // other row's checkbox disappears so only one can ever be
+            // selected. The two modes are mutually exclusive (each "start"
+            // handler cancels the other), so at most one of these is ever
+            // active at a time.
             const isMergeSource = mergingFromId === car.id;
             const isMergeEligible =
               mergingFromId != null &&
               !isMergeSource &&
               (mergeTargetId === null || mergeTargetId === car.id);
+            const isLinkSource = linkingFromId === car.id;
+            const isLinkEligible =
+              linkingFromId != null && !isLinkSource && (linkTargetId === null || linkTargetId === car.id);
+
+            const siblings = groupMembers(cars, car);
 
             return (
               <div
@@ -795,7 +849,7 @@ export function CarsTable({
                 id={`car-${car.id}`}
                 data-testid="car-card"
                 className={`overflow-hidden rounded-lg border border-border ${
-                  selectedId === car.id || isMergeSource ? "bg-highlight" : ""
+                  selectedId === car.id || isMergeSource || isLinkSource ? "bg-highlight" : ""
                 }`}
               >
                 <div
@@ -805,14 +859,21 @@ export function CarsTable({
                 >
                   {/* Row number — shown on mobile and desktop alike, so it's
                       always clear where a car sits in the current (filtered,
-                      sorted) list. Swaps to a checkbox while a merge is in
-                      progress and this row is eligible to be the target. */}
+                      sorted) list. Swaps to a checkbox while a merge or link
+                      is in progress and this row is eligible to be picked. */}
                   {isMergeEligible ? (
                     <input
                       type="checkbox"
                       checked={mergeTargetId === car.id}
                       onChange={(e) => pickMergeTarget(e.target.checked ? car.id : null)}
                       aria-label={`Merge with ${car.year} ${car.make} ${car.model}`}
+                    />
+                  ) : isLinkEligible ? (
+                    <input
+                      type="checkbox"
+                      checked={linkTargetId === car.id}
+                      onChange={(e) => setLinkTargetId(e.target.checked ? car.id : null)}
+                      aria-label={`Also listed at ${car.year} ${car.make} ${car.model}`}
                     />
                   ) : (
                     <span className="tabular-nums text-xs text-text-muted sm:text-sm">{index + 1}</span>
@@ -856,6 +917,14 @@ export function CarsTable({
                       }`}
                     >
                       {car.make} {car.model}
+                      {siblings.length > 0 ? (
+                        <span
+                          className="ml-1.5 rounded-full border border-series-1 px-1.5 py-0.5 text-[10px] font-normal text-series-1"
+                          title={`Also listed at ${siblings.map((s) => siteLabel(s.url)).join(", ")}`}
+                        >
+                          also listed {siblings.length > 1 ? `at ${siblings.length} others` : "elsewhere"}
+                        </span>
+                      ) : null}
                     </span>
                     <span className="tabular-nums text-sm font-medium">
                       {latest ? formatPrice(latest.price, latest.currency) : "—"}
@@ -924,9 +993,14 @@ export function CarsTable({
                           <button type="button" onClick={() => startEditing(car.id)} className={actionButtonClass}>
                             Edit details
                           </button>
-                          {mergingFromId == null ? (
+                          {mergingFromId == null && linkingFromId == null ? (
                             <button type="button" onClick={() => startMerging(car.id)} className={actionButtonClass}>
                               Merge with another car
+                            </button>
+                          ) : null}
+                          {linkingFromId == null && mergingFromId == null ? (
+                            <button type="button" onClick={() => startLinking(car.id)} className={actionButtonClass}>
+                              Also listed at another site
                             </button>
                           ) : null}
                           {car.is_removed ? (
@@ -1077,6 +1151,66 @@ export function CarsTable({
                         </div>
 
                         <PriceHistoryList carId={car.id} points={points} />
+
+                        {siblings.length > 0 ? (
+                          <div className="space-y-2">
+                            <h3 className="text-xs font-medium text-text-secondary">Also listed at</h3>
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="text-left text-xs text-text-secondary">
+                                  <th className="pb-1 pr-3 font-medium">Site</th>
+                                  <th className="pb-1 pr-3 font-medium">Status</th>
+                                  <th className="pb-1 pr-3 font-medium">Latest price</th>
+                                  <th className="pb-1 pr-3 font-medium"></th>
+                                  <th className="pb-1 font-medium"></th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {siblings.map((sib) => {
+                                  const sibLatest = sib.price_history[sib.price_history.length - 1];
+                                  return (
+                                    <tr key={sib.id} className="border-b border-border last:border-0">
+                                      <td className="py-2 pr-3">
+                                        <a
+                                          href={sib.url}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="text-series-1 hover:underline"
+                                        >
+                                          {siteLabel(sib.url)}
+                                        </a>
+                                      </td>
+                                      <td className="py-2 pr-3 text-text-secondary">
+                                        {sib.is_removed ? <span className="text-critical">Removed</span> : "Active"}
+                                      </td>
+                                      <td className="py-2 pr-3 tabular-nums text-text-secondary">
+                                        {sibLatest ? formatPrice(sibLatest.price, sibLatest.currency) : "—"}
+                                      </td>
+                                      <td className="py-2 pr-3">
+                                        <Link
+                                          href={`/?highlight=${sib.id}`}
+                                          className="text-sm text-series-1 hover:underline"
+                                        >
+                                          View
+                                        </Link>
+                                      </td>
+                                      <td className="py-2">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleUnlink(sib.id)}
+                                          title="Stop treating these as the same car — both listings stay exactly as they are, just no longer connected."
+                                          className="text-sm text-text-secondary hover:text-critical"
+                                        >
+                                          Unlink
+                                        </button>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        ) : null}
 
                         {car.listing_history.length > 0 ? (
                           <div className="space-y-2">

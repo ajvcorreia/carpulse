@@ -39,3 +39,19 @@ export function daysListed(adPlacedAt: string | null): number | null {
   const todayUtc = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
   return Math.max(0, Math.round((todayUtc - placed.getTime()) / (24 * 60 * 60 * 1000)));
 }
+
+// A friendly site name from a listing URL's hostname ("dubai.dubizzle.com"
+// -> "Dubizzle") for "also listed at" displays — a heuristic (second-level
+// domain label, title-cased), not a real site registry, so unusual TLD
+// structures (e.g. a .co.uk domain) may read oddly. Falls back to the raw
+// URL if it doesn't even parse as one.
+export function siteLabel(url: string): string {
+  try {
+    const hostname = new URL(url).hostname.replace(/^www\./, "");
+    const parts = hostname.split(".");
+    const main = parts.length >= 2 ? parts[parts.length - 2] : hostname;
+    return main.charAt(0).toUpperCase() + main.slice(1);
+  } catch {
+    return url;
+  }
+}

@@ -188,6 +188,17 @@ export function NewCarForm({ url, options }: { url: string; options: FieldOption
     submitForReal(new FormData(formRef.current));
   }
 
+  // Tracks this as a genuinely separate, independent car — own price
+  // history, own removed/favorite status — but immediately links it to the
+  // matched one, since it's the same physical car listed on another site at
+  // the same time (unlike a relist, where one listing replaces another).
+  function handleAlsoListed() {
+    if (!formRef.current || !duplicate) return;
+    const formData = new FormData(formRef.current);
+    formData.set("also_listed_at_car_id", duplicate.id);
+    submitForReal(formData);
+  }
+
   // Merges into the matched car instead of creating a new one — its price
   // history carries over, and the old URL/ad date are archived so they stay
   // visible rather than silently overwritten.
@@ -356,6 +367,15 @@ export function NewCarForm({ url, options }: { url: string; options: FieldOption
                 className="rounded-lg border border-series-1 px-4 py-2 text-sm font-medium text-series-1 hover:bg-highlight disabled:opacity-60"
               >
                 {pending ? "Saving…" : "Same car, re-listed here (keep history)"}
+              </button>
+              <button
+                type="button"
+                onClick={handleAlsoListed}
+                disabled={pending}
+                title="Track this as its own car (own price history, own listing) and just connect it to the existing one — for when the same car is listed on more than one site at once. Unlink any time."
+                className="rounded-lg border border-series-1 px-4 py-2 text-sm font-medium text-series-1 hover:bg-highlight disabled:opacity-60"
+              >
+                {pending ? "Adding…" : "Also listed elsewhere (link, don't merge)"}
               </button>
               <button
                 type="button"

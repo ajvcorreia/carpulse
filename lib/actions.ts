@@ -30,6 +30,35 @@ function insertPricePoint(db: DatabaseSync, carId: string, price: number, record
   ).run(randomUUID(), carId, price, recordedAt);
 }
 
+// "Also listed at" — folds carBId's whole group into carAId's group (or
+// creates a new group of just the two, if neither was already grouped).
+// Symmetric in effect regardless of argument order: whichever of the two
+// resolves to the pre-existing anchor keeps that role, and every member of
+// the *other* group gets repointed onto it. Unlike relist/merge, nothing
+// else about either car changes — no data is combined or discarded, so this
+// is trivially reversible (see unlinkCar below).
+function linkCarIds(db: DatabaseSync, carAId: string, carBId: string) {
+  if (carAId === carBId) return;
+
+  const getCar = db.prepare("select id, group_id from cars where id = ?");
+  const carA = getCar.get(carAId) as { id: string; group_id: string | null } | undefined;
+  const carB = getCar.get(carBId) as { id: string; group_id: string | null } | undefined;
+  if (!carA || !carB) throw new Error("One of those cars no longer exists.");
+
+  const anchorA = carA.group_id ?? carA.id;
+  const anchorB = carB.group_id ?? carB.id;
+  if (anchorA === anchorB) return; // already in the same group
+
+  const membersOfB = db.prepare("select id from cars where id = ? or group_id = ?").all(anchorB, anchorB) as {
+    id: string;
+  }[];
+
+  const setGroup = db.prepare("update cars set group_id = ? where id = ?");
+  for (const m of membersOfB) {
+    if (m.id !== anchorA) setGroup.run(anchorA, m.id);
+  }
+}
+
 // Same car, re-listed under a different URL, tends to keep the same make,
 // model, and colors, with mileage that's crept up a little rather than
 // changed wildly — so within 5% (or 1000km, whichever is larger, to avoid
@@ -143,6 +172,11 @@ export async function createCar(_prevState: unknown, formData: FormData) {
   const adPlacedAt = parseDate(formData.get("ad_placed_at"));
   const price = parseNumber(formData.get("price"));
   const recordedAt = parseDate(formData.get("recorded_at"));
+  // Set from the add-car page's "Also listed elsewhere" duplicate-detection
+  // option — tracks this as a genuinely new, independent car (own price
+  // history, own removed/favorite status) but immediately links it to the
+  // existing one so both show up as "also listed at" each other.
+  const alsoListedAtCarId = String(formData.get("also_listed_at_car_id") ?? "").trim() || null;
 
   if (!url || !make || !model || year == null || price == null) {
     return { error: "URL, make, model, year, and price are required." };
@@ -159,6 +193,8 @@ export async function createCar(_prevState: unknown, formData: FormData) {
       ).run(carId, url, make, model, year, km, cylinders, spec, exteriorColor, interiorColor, adPlacedAt);
 
       insertPricePoint(db, carId, price, recordedAt);
+
+      if (alsoListedAtCarId) linkCarIds(db, carId, alsoListedAtCarId);
     });
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Could not save the car." };
@@ -308,10 +344,93 @@ export async function mergeCars(formData: FormData) {
          where id = ?`
       ).run(make, model, year, cylinders, spec, exteriorColor, interiorColor, keepCarId);
 
+      // If mergeFromCarId is/was part of an "also listed at" group (either
+      // as the anchor other cars' group_id points at, or as a plain
+      // member), fold that relationship onto the surviving car first —
+      // otherwise the delete below fails outright (group_id's FK rejects
+      // deleting a car other rows still reference), and even if it didn't,
+      // silently dropping the "also listed at" link would be a real loss.
+      linkCarIds(db, keepCarId, mergeFromCarId);
+
       db.prepare("delete from cars where id = ?").run(mergeFromCarId);
     });
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Could not merge these cars." };
+  }
+
+  revalidatePath("/");
+  return { success: true as const };
+}
+
+// "Also listed at" — the same physical car posted on more than one site at
+// once. Unlike mergeCars, this never touches either car's own data (price
+// history, url, removed/favorite status all stay exactly as they were) —
+// it's purely the group_id relationship, so it's trivially reversible via
+// unlinkCar below.
+export async function linkCars(formData: FormData) {
+  const carAId = String(formData.get("car_a_id") ?? "");
+  const carBId = String(formData.get("car_b_id") ?? "");
+
+  if (!carAId || !carBId || carAId === carBId) {
+    return { error: "Pick a different car to link." };
+  }
+
+  const db = getDb();
+
+  try {
+    withTransaction(db, () => linkCarIds(db, carAId, carBId));
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Could not link these cars." };
+  }
+
+  revalidatePath("/");
+  return { success: true as const };
+}
+
+// Removes one car from its "also listed at" group, leaving the rest of the
+// group intact. Handles every case symmetrically: leaving as a plain
+// member (the common case — the remaining members already point at the
+// same anchor, nothing else to do), leaving as the anchor with 2+ other
+// members remaining (re-anchors the group onto one of them), and leaving a
+// group down to 0-1 members (the group dissolves entirely).
+export async function unlinkCar(formData: FormData) {
+  const carId = String(formData.get("car_id") ?? "");
+  if (!carId) return { error: "Missing car." };
+
+  const db = getDb();
+
+  try {
+    withTransaction(db, () => {
+      const car = db.prepare("select id, group_id from cars where id = ?").get(carId) as
+        | { id: string; group_id: string | null }
+        | undefined;
+      if (!car) throw new Error("That car no longer exists.");
+
+      const anchorId = car.group_id ?? car.id;
+      const remaining = db
+        .prepare("select id from cars where (id = ? or group_id = ?) and id != ?")
+        .all(anchorId, anchorId, carId) as { id: string }[];
+
+      db.prepare("update cars set group_id = null where id = ?").run(carId);
+
+      if (remaining.length === 1) {
+        // Down to a single car — no group left to belong to.
+        db.prepare("update cars set group_id = null where id = ?").run(remaining[0].id);
+      } else if (remaining.length >= 2 && carId === anchorId) {
+        // The anchor itself is leaving but 2+ others remain — re-anchor
+        // the group onto the first of them instead of leaving it orphaned.
+        const newAnchor = remaining[0].id;
+        db.prepare("update cars set group_id = null where id = ?").run(newAnchor);
+        for (const m of remaining.slice(1)) {
+          db.prepare("update cars set group_id = ? where id = ?").run(newAnchor, m.id);
+        }
+      }
+      // Otherwise (a non-anchor member leaving, 2+ others remain): the
+      // anchor is unchanged and every remaining member already points at
+      // it correctly — nothing further to do.
+    });
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Could not unlink that car." };
   }
 
   revalidatePath("/");
