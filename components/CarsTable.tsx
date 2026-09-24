@@ -371,10 +371,34 @@ export function CarsTable({
   const filteredRows = useMemo(() => rows.filter((r) => matchesFilters(r, filters)), [rows, filters]);
 
   const sortedRows = useMemo(() => {
-    if (!sortKey) return filteredRows;
-    const dir = sortDir === "asc" ? 1 : -1;
-    return [...filteredRows].sort((a, b) => compareRows(a, b, sortKey) * dir);
-  }, [filteredRows, sortKey, sortDir]);
+    const sorted = !sortKey
+      ? filteredRows
+      : [...filteredRows].sort((a, b) => compareRows(a, b, sortKey) * (sortDir === "asc" ? 1 : -1));
+
+    // Cluster "also listed at" siblings so they're adjacent regardless of
+    // sort — walk the sorted order, and the first time any member of a
+    // group is reached, immediately pull its still-unplaced siblings up
+    // next to it (in their existing relative order) rather than leaving
+    // them scattered wherever their own sort position would otherwise put
+    // them. Whichever member sorts first still decides where the whole
+    // cluster lands.
+    const placed = new Set<string>();
+    const clustered: typeof sorted = [];
+    for (const row of sorted) {
+      if (placed.has(row.car.id)) continue;
+      clustered.push(row);
+      placed.add(row.car.id);
+      const siblingIds = new Set(groupMembers(cars, row.car).map((s) => s.id));
+      if (siblingIds.size === 0) continue;
+      for (const other of sorted) {
+        if (siblingIds.has(other.car.id) && !placed.has(other.car.id)) {
+          clustered.push(other);
+          placed.add(other.car.id);
+        }
+      }
+    }
+    return clustered;
+  }, [filteredRows, sortKey, sortDir, cars]);
 
   // Restore remembered filters/sort after mount — deliberately not in the
   // initial useState (would read localStorage during SSR/hydration and
