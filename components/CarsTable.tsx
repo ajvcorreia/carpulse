@@ -1144,8 +1144,10 @@ export function CarsTable({
                         </dl>
 
                         {siblings.length > 0 ? (
-                          <div className="space-y-2">
-                            <h3 className="text-xs font-medium text-text-secondary">Also listed at</h3>
+                          <div className="space-y-2 rounded-lg border border-series-1 bg-surface p-3">
+                            <h3 className="text-xs font-medium text-series-1">
+                              🔗 Also listed at {siblings.length} other site{siblings.length === 1 ? "" : "s"}
+                            </h3>
                             <table className="w-full text-sm">
                               <thead>
                                 <tr className="text-left text-xs text-text-secondary">
