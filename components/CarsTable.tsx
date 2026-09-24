@@ -1143,15 +1143,6 @@ export function CarsTable({
                           </div>
                         </dl>
 
-                        <PriceChart points={points} />
-
-                        <div className="space-y-1">
-                          <h3 className="text-xs font-medium text-text-secondary">Add a new price update</h3>
-                          <InlineAddPriceForm carId={car.id} />
-                        </div>
-
-                        <PriceHistoryList carId={car.id} points={points} />
-
                         {siblings.length > 0 ? (
                           <div className="space-y-2">
                             <h3 className="text-xs font-medium text-text-secondary">Also listed at</h3>
@@ -1211,6 +1202,15 @@ export function CarsTable({
                             </table>
                           </div>
                         ) : null}
+
+                        <PriceChart points={points} />
+
+                        <div className="space-y-1">
+                          <h3 className="text-xs font-medium text-text-secondary">Add a new price update</h3>
+                          <InlineAddPriceForm carId={car.id} />
+                        </div>
+
+                        <PriceHistoryList carId={car.id} points={points} />
 
                         {car.listing_history.length > 0 ? (
                           <div className="space-y-2">
