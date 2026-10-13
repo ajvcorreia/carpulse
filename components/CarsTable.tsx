@@ -76,6 +76,7 @@ type Filters = {
   priceMin: string;
   priceMax: string;
   hideRemoved: boolean;
+  onlyRemoved: boolean;
   hideStruckOut: boolean;
   onlyPriceUpdates: boolean;
   onlyFavorites: boolean;
@@ -93,6 +94,7 @@ const DEFAULT_FILTERS: Filters = {
   priceMin: "",
   priceMax: "",
   hideRemoved: true,
+  onlyRemoved: false,
   hideStruckOut: true,
   onlyPriceUpdates: false,
   onlyFavorites: false,
@@ -166,6 +168,7 @@ function matchesFilters(row: Row, filters: Filters): boolean {
   const { car, latest, points } = row;
 
   if (filters.hideRemoved && car.is_removed) return false;
+  if (filters.onlyRemoved && !car.is_removed) return false;
   if (filters.hideStruckOut && car.is_struck_out) return false;
   if (filters.onlyFavorites && !car.is_favorite) return false;
   // "Had a price update" means more than one recorded price point — the
@@ -205,6 +208,7 @@ function optionsFor<T>(
 ): T[] {
   const scoped: Filters = { ...DEFAULT_FILTERS };
   scoped.hideRemoved = filters.hideRemoved;
+  scoped.onlyRemoved = filters.onlyRemoved;
   scoped.hideStruckOut = filters.hideStruckOut;
   scoped.onlyPriceUpdates = filters.onlyPriceUpdates;
   scoped.onlyFavorites = filters.onlyFavorites;
@@ -569,6 +573,10 @@ export function CarsTable({
   function setFilter<K extends keyof Filters>(key: K, value: Filters[K]) {
     setFilters((f) => {
       const next = { ...f, [key]: value };
+      // "Hide removed" and "Only removed" are mutually exclusive — together
+      // they'd match nothing, so turning one on turns the other off.
+      if (key === "onlyRemoved" && value) next.hideRemoved = false;
+      if (key === "hideRemoved" && value) next.onlyRemoved = false;
       saveFilters(next);
       return next;
     });
@@ -700,6 +708,14 @@ export function CarsTable({
             onChange={(e) => setFilter("hideRemoved", e.target.checked)}
           />
           Hide removed ads
+        </label>
+        <label className="flex items-center gap-2 self-end pb-1.5 text-sm text-text-secondary">
+          <input
+            type="checkbox"
+            checked={filters.onlyRemoved}
+            onChange={(e) => setFilter("onlyRemoved", e.target.checked)}
+          />
+          Only removed ads
         </label>
         <label className="flex items-center gap-2 self-end pb-1.5 text-sm text-text-secondary">
           <input
