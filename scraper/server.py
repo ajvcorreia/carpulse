@@ -5,7 +5,9 @@ StealthyFetcher (a real headless browser, so most bot protection that blocks
 a plain HTTP request lets it through) and returns what it could find:
 
     {"status": 200, "title": "...", "price": 85000, "currency": "AED",
-     "source": "json-ld" | "meta" | "text" | null}
+     "source": "json-ld" | "meta" | "text" | null, "blocked": false}
+
+`blocked` means the site served a bot-protection page instead of the listing.
 
 `source` says how confident to be: "json-ld"/"meta" come from the page's own
 structured data (what the site tells search engines the price is), "text" is
@@ -109,19 +111,31 @@ def from_text(html):
     return parse_price(match.group(2)), normalize_currency(match.group(1))
 
 
+# Interstitials bot protection serves in place of the real page, with a 200 —
+# Imperva ("Pardon Our Interruption", dubizzle), Cloudflare, Akamai.
+BLOCK_TITLES = ("pardon our interruption", "just a moment", "attention required", "access denied")
+
+
 def scrape(url):
     with fetch_lock:
+        # The `wait` is what gets past dubizzle's Imperva check: its
+        # interstitial runs a JS challenge and then reloads into the real
+        # listing, which takes a few seconds after the network first idles.
         page = StealthyFetcher.fetch(
             url,
             headless=True,
             network_idle=True,
-            solve_cloudflare=True,
+            wait=8000,
+            google_search=False,
             timeout=FETCH_TIMEOUT_MS,
         )
 
     status = getattr(page, "status", None)
     title = (page.css("title::text").get() or "").strip() or None
-    result = {"status": status, "title": title, "price": None, "currency": None, "source": None}
+    blocked = bool(title) and title.lower().startswith(BLOCK_TITLES)
+    result = {"status": status, "title": title, "price": None, "currency": None, "source": None, "blocked": blocked}
+    if blocked:
+        return result
 
     html = (page.body or b"").decode(getattr(page, "encoding", None) or "utf-8", errors="replace")
     extractors = (

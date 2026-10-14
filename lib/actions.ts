@@ -579,6 +579,7 @@ type ScrapeResponse = {
   price: number | null;
   currency: string | null;
   source: "json-ld" | "meta" | "text" | null;
+  blocked?: boolean;
 };
 
 export type ListingCheckResult =
@@ -623,6 +624,7 @@ export async function checkListingForUpdates(carId: string): Promise<ListingChec
   }
 
   if (data.status === 404 || data.status === 410) return { kind: "gone", status: data.status };
+  if (data.blocked) return { kind: "error", message: "The site's bot protection blocked the check — try again later." };
   if (data.price == null) return { kind: "no-price", title: data.title };
 
   const latest = db
