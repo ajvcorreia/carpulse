@@ -16,6 +16,21 @@ crawling.
   removed, strike out, "Ask Claude" for engine/reliability insights).
 - A key-gated REST API (`/api/cars`) is also available for scripts/automation.
 
+### Checking a listing for updates (experimental)
+
+Each expanded card has a **Check listing for updates** button. It asks a
+small sidecar service (`scraper/`, built on
+[Scrapling](https://github.com/D4Vinci/Scrapling)'s headless-browser
+`StealthyFetcher`) to load the listing and read its price — from the page's
+structured data (JSON-LD / price meta tags) when the site provides it, falling
+back to a guess from the page text. A structured-data price that differs from
+the latest one is logged straight away; a text guess is shown with a "Save it
+anyway" link instead, since it can pick up the wrong number. A 404/410 is
+reported as a likely removed listing.
+
+Docker Compose runs the sidecar for you (`SCRAPER_URL` is preset). Without it,
+the button just reports that no scraper is configured.
+
 ## Stack
 
 Next.js (App Router) + SQLite (via Node's built-in `node:sqlite`). Single-user,

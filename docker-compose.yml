@@ -12,8 +12,24 @@ services:
       # reach it, same as before.
       AUTH_USERNAME: ${AUTH_USERNAME:-}
       AUTH_PASSWORD: ${AUTH_PASSWORD:-}
+      # The Scrapling sidecar below, reached over the compose network — it's
+      # what the "Check listing for updates" button asks to fetch a listing.
+      SCRAPER_URL: http://scraper:8000
     volumes:
       - carpulse-data:/app/data
+    restart: unless-stopped
+
+  # Headless-browser listing fetcher (scraper/). Not published to the host on
+  # purpose: it'll fetch any URL it's handed, so only the app should reach it.
+  scraper:
+    image: ajvcorreia/carpulse-scraper:latest
+    # Uncomment to build from source instead of pulling the published image:
+    # build: ./scraper
+    # Uncomment to reach it from `npm run dev` on this machine
+    # (then SCRAPER_URL=http://localhost:8765 in .env.local):
+    # ports:
+    #   - "127.0.0.1:8765:8000"
+    shm_size: 1gb # Chromium crashes on Docker's default 64MB /dev/shm
     restart: unless-stopped
 
 volumes:

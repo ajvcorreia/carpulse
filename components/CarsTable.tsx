@@ -10,6 +10,7 @@ import { CopyLinkButton } from "@/components/CopyLinkButton";
 import { PriceHistoryList } from "@/components/PriceHistoryList";
 import { FavoriteToggle } from "@/components/FavoriteToggle";
 import { InlineAddPriceForm } from "@/components/InlineAddPriceForm";
+import { CheckListingButton } from "@/components/CheckListingButton";
 import { EditCarForm } from "@/components/EditCarForm";
 import { MergeBanner } from "@/components/MergeBanner";
 import { LinkBanner } from "@/components/LinkBanner";
@@ -1075,6 +1076,7 @@ export function CarsTable({
                           >
                             Open listing{isDesktop ? " ↗" : ""}
                           </a>
+                          <CheckListingButton carId={car.id} className={actionButtonClass} />
                           <a
                             href={claudeInsightsUrl(car, latest ? formatPrice(latest.price, latest.currency) : null)}
                             target="_blank"

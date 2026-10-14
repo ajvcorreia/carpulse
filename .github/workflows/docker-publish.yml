@@ -32,3 +32,18 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+      - uses: docker/metadata-action@v5
+        id: scraper-meta
+        with:
+          images: ${{ secrets.DOCKERHUB_USERNAME }}/carpulse-scraper
+          tags: |
+            type=raw,value=latest
+            type=sha,format=short
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./scraper
+          push: true
+          tags: ${{ steps.scraper-meta.outputs.tags }}
+          labels: ${{ steps.scraper-meta.outputs.labels }}

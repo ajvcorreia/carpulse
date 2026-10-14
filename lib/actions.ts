@@ -573,6 +573,82 @@ export async function addPriceInline(_prevState: unknown, formData: FormData) {
   return { success: true as const };
 }
 
+type ScrapeResponse = {
+  status: number | null;
+  title: string | null;
+  price: number | null;
+  currency: string | null;
+  source: "json-ld" | "meta" | "text" | null;
+};
+
+export type ListingCheckResult =
+  | { kind: "error"; message: string }
+  | { kind: "gone"; status: number }
+  | { kind: "no-price"; title: string | null }
+  | { kind: "unchanged"; price: number; currency: string }
+  | { kind: "updated"; price: number; previous: number | null; currency: string }
+  // Found something, but not trusted enough to save on its own — a regex
+  // hit over page text, or a currency that doesn't match what's tracked.
+  // The client offers a one-click save instead.
+  | { kind: "unconfirmed"; price: number; currency: string; reason: string };
+
+// Asks the Scrapling sidecar (scraper/server.py) to fetch the car's listing
+// and logs a new price point if it changed. Experimental and manual for now
+// — the same call is what a scheduled auto-update would loop over later.
+export async function checkListingForUpdates(carId: string): Promise<ListingCheckResult> {
+  const scraperUrl = process.env.SCRAPER_URL;
+  if (!scraperUrl) return { kind: "error", message: "SCRAPER_URL isn't set, so there's no scraper to ask." };
+
+  const db = getDb();
+  const car = db.prepare("select url from cars where id = ?").get(carId) as { url: string } | undefined;
+  if (!car) return { kind: "error", message: "That car no longer exists." };
+
+  let data: ScrapeResponse;
+  try {
+    const res = await fetch(`${scraperUrl.replace(/\/$/, "")}/scrape`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: car.url }),
+      // A headless browser waiting out bot checks is slow — leave headroom
+      // over the scraper's own 60s page timeout.
+      signal: AbortSignal.timeout(90_000),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) return { kind: "error", message: body?.error ?? `Scraper responded ${res.status}.` };
+    data = body as ScrapeResponse;
+  } catch (err) {
+    const message =
+      err instanceof Error && err.name === "TimeoutError" ? "Scraper timed out." : "Couldn't reach the scraper.";
+    return { kind: "error", message };
+  }
+
+  if (data.status === 404 || data.status === 410) return { kind: "gone", status: data.status };
+  if (data.price == null) return { kind: "no-price", title: data.title };
+
+  const latest = db
+    .prepare(
+      "select price, currency from price_history where car_id = ? order by recorded_at desc, created_at desc limit 1"
+    )
+    .get(carId) as { price: number; currency: string } | undefined;
+  const trackedCurrency = latest?.currency ?? "AED";
+  // Anything that isn't an ISO code (a site writing "Dirhams", say) can't be
+  // formatted or compared, so it's assumed to be the tracked one.
+  const currency = data.currency && /^[A-Z]{3}$/.test(data.currency) ? data.currency : trackedCurrency;
+  const price = Math.round(data.price);
+
+  if (currency !== trackedCurrency) {
+    return { kind: "unconfirmed", price, currency, reason: `Listing shows ${currency}, tracked in ${trackedCurrency}.` };
+  }
+  if (latest && latest.price === price) return { kind: "unchanged", price, currency };
+  if (data.source === "text") {
+    return { kind: "unconfirmed", price, currency, reason: "Guessed from page text, not the site's price data." };
+  }
+
+  insertPricePoint(db, carId, price, null);
+  revalidatePath("/");
+  return { kind: "updated", price, previous: latest?.price ?? null, currency };
+}
+
 // Called directly from a client component (not bound to a <form action>),
 // so it can return the deleted row's data for an "Undo" affordance and
 // doesn't redirect — the list re-renders from revalidated data instead.
