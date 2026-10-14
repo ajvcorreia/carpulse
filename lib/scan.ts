@@ -54,7 +54,10 @@ export function requestScanStop() {
 }
 
 export function getRecentScanRuns(limit = 10): ScanRunRow[] {
-  return getDb().prepare("select * from scan_runs order by started_at desc limit ?").all(limit) as ScanRunRow[];
+  const rows = getDb().prepare("select * from scan_runs order by started_at desc limit ?").all(limit);
+  // node:sqlite rows have a null prototype, which Next refuses to pass to a
+  // client component — copy each into a plain object.
+  return rows.map((r) => ({ ...r }) as ScanRunRow);
 }
 
 // A run left "running" by a previous process (container restart mid-scan)
