@@ -8,6 +8,9 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
           <Link href="/" className="text-lg font-semibold">
             CarPulse
           </Link>
+          <Link href="/settings" className="text-sm text-text-secondary hover:text-text-primary">
+            Settings
+          </Link>
         </div>
       </header>
       <main className="w-full flex-1 px-4 py-6">{children}</main>

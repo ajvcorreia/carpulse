@@ -68,7 +68,11 @@ function ResultMessage({
       return <span className="text-sm text-critical">{result.message}</span>;
     case "gone":
       return (
-        <span className="text-sm text-critical">Listing returned {result.status} — it may have been removed.</span>
+        <span className="text-sm text-critical">
+          {result.status === 404 || result.status === 410
+            ? `Listing returned ${result.status} — it may have been removed.`
+            : "The listing seems to be gone (the page says so, or redirects to a search page)."}
+        </span>
       );
     case "no-price":
       return (

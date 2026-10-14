@@ -31,6 +31,29 @@ reported as a likely removed listing.
 Docker Compose runs the sidecar for you (`SCRAPER_URL` is preset). Without it,
 the button just reports that no scraper is configured.
 
+The same sidecar pre-fills the add-car form: it reads the listing's
+schema.org vehicle data, spec tables, and description (nothing site-specific)
+and fills any still-empty fields for you to review.
+
+### Automatic scans
+
+**Settings** (header link) turns on a daily or weekly scan at a set time and
+timezone. A scan checks every car that isn't struck out, one at a time with a
+random pause between cars (configurable, 10–40s by default):
+
+- **Price changed** — the new price is logged (only from the site's own
+  price data, never a guess from page text).
+- **Listing gone** (404/410, or a page saying it's no longer available) — the
+  car is marked removed.
+- **Removed car's listing is live again** — it's marked active.
+
+Scans run inside the app process (started from `instrumentation.ts`); a run
+missed while the app was down still starts later that day. The settings page
+also has **Run scan now** / **Stop**, and shows what recent runs changed. To
+get a summary by email after each scan, fill in the SMTP settings there — the
+password is stored in the SQLite database, so treat the data volume as
+sensitive.
+
 ## Stack
 
 Next.js (App Router) + SQLite (via Node's built-in `node:sqlite`). Single-user,

@@ -32,4 +32,29 @@ export const MIGRATIONS: { version: string; sql: string }[] = [
     version: "0003_add_group_id",
     sql: `alter table cars add column group_id text references cars (id);`,
   },
+  // App settings (automatic scan schedule, email/SMTP) as JSON blobs keyed
+  // by section — see lib/settings.ts — plus a history of scan runs, each
+  // with its progress and a JSON summary of what it changed.
+  {
+    version: "0004_settings_and_scans",
+    sql: `
+      create table settings (
+        key text primary key,
+        value text not null
+      );
+
+      create table scan_runs (
+        id text primary key,
+        trigger text not null,
+        status text not null,
+        started_at text not null,
+        finished_at text,
+        total integer not null default 0,
+        checked integer not null default 0,
+        summary text
+      );
+
+      create index scan_runs_started_idx on scan_runs (started_at desc);
+    `,
+  },
 ];

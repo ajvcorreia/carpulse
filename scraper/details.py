@@ -183,6 +183,35 @@ def walk(node):
             yield from walk(v)
 
 
+# Containers that hold *other* listings — a search/category page, or a
+# "similar cars" carousel. Nothing inside them describes the car at the URL.
+LIST_TYPES = {"itemlist", "listitem", "collectionpage", "searchresultspage", "offercatalog"}
+VEHICLE_TYPES = {"vehicle", "car", "product", "individualproduct"}
+
+
+def walk_single(node):
+    """Like walk(), but never descends into a list of other listings."""
+    if isinstance(node, dict):
+        if type_names(node) & LIST_TYPES:
+            return
+        yield node
+        for k, v in node.items():
+            if k not in ("itemListElement", "isSimilarTo", "isRelatedTo"):
+                yield from walk_single(v)
+    elif isinstance(node, list):
+        for v in node:
+            yield from walk_single(v)
+
+
+def is_index_page(ld_docs):
+    """A search/category page rather than one listing: it carries a list of
+    cars and no car of its own. Some sites (DubiCars) redirect a removed ad to
+    exactly such a page, with a 200, so its prices belong to other cars."""
+    has_list = any(type_names(o) & LIST_TYPES for d in ld_docs for o in walk(d))
+    has_single = any(type_names(o) & VEHICLE_TYPES for d in ld_docs for o in walk_single(d))
+    return has_list and not has_single
+
+
 def parse_json_blobs(blobs):
     parsed = []
     for raw in blobs:
@@ -206,9 +235,9 @@ def first(value):
 def from_json_ld(ld_docs):
     found = {}
     for doc in ld_docs:
-        for obj in walk(doc):
+        for obj in walk_single(doc):
             types = type_names(obj)
-            if not types & {"vehicle", "car", "product", "individualproduct"}:
+            if not types & VEHICLE_TYPES:
                 continue
             # A bare Product only counts if it looks like a vehicle.
             if types <= {"product", "individualproduct"} and not (
@@ -318,6 +347,10 @@ def from_text(text):
 
 def extract_details(ld_blobs, json_blobs, html, title="", description=""):
     """Returns ({field: value}, {field: layer}) for whatever could be found."""
+    # A search page's spec tables and text describe many cars, none of them
+    # this one — better to fill nothing than another car's details.
+    if is_index_page(parse_json_blobs(ld_blobs)):
+        return {}, {}
     layers = (
         ("structured data", lambda: from_json_ld(parse_json_blobs(ld_blobs))),
         ("spec table", lambda: from_json_pairs(parse_json_blobs(json_blobs))),

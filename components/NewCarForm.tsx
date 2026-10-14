@@ -3,7 +3,8 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { AutocompleteInput } from "@/components/AutocompleteInput";
-import { checkCarDuplicate, createCar, readListingDetails, relistCar, type ListingDetails } from "@/lib/actions";
+import { checkCarDuplicate, createCar, readListingDetails, relistCar } from "@/lib/actions";
+import type { ListingDetails } from "@/lib/scraper";
 import { formatPrice } from "@/lib/format";
 
 // Field ids that were auto-filled from the listing page, so each Field can

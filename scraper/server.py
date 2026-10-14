@@ -8,6 +8,8 @@ a plain HTTP request lets it through) and returns what it could find:
      "source": "json-ld" | "meta" | "text" | null, "blocked": false}
 
 `blocked` means the site served a bot-protection page instead of the listing.
+`gone_hint` means no price was found and the page says the ad is gone ("no
+longer available", "listing expired"...) — for sites that don't 404.
 
 POST /extract {"url": "..."} does the same fetch and also returns
 "details" ({make, model, year, km, cylinders, spec, exterior_color,
@@ -32,7 +34,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from scrapling.fetchers import StealthyFetcher
 
-from details import extract_details
+from details import extract_details, is_index_page, parse_json_blobs, walk_single
 
 PORT = int(os.environ.get("PORT", "8000"))
 FETCH_TIMEOUT_MS = int(os.environ.get("FETCH_TIMEOUT_MS", "60000"))
@@ -63,24 +65,10 @@ def normalize_currency(value):
     return "AED" if c in ("DH", "DHS") else c
 
 
-def walk(node):
-    """Yields every dict nested anywhere inside a parsed JSON-LD blob."""
-    if isinstance(node, dict):
-        yield node
-        for v in node.values():
-            yield from walk(v)
-    elif isinstance(node, list):
-        for v in node:
-            yield from walk(v)
-
-
 def from_json_ld(page):
-    for raw in page.css('script[type="application/ld+json"]::text').getall():
-        try:
-            data = json.loads(raw)
-        except (ValueError, TypeError):
-            continue
-        for obj in walk(data):
+    for data in parse_json_blobs(page.css('script[type="application/ld+json"]::text').getall()):
+        # walk_single: an Offer inside an ItemList is some other car's price.
+        for obj in walk_single(data):
             offers = obj.get("offers")
             candidates = list(offers) if isinstance(offers, list) else [offers]
             # Offer objects found while walking also count on their own.
@@ -118,9 +106,22 @@ def from_text(html):
     return parse_price(match.group(2)), normalize_currency(match.group(1))
 
 
+GONE_RE = re.compile(
+    r"\b(no longer available|has been (?:removed|deleted|sold)|ad (?:has )?expired|listing (?:has )?expired"
+    r"|this (?:ad|listing|car) (?:is|has been) (?:no longer|removed|sold|deleted|expired))\b",
+    re.IGNORECASE,
+)
+TAG_RE = re.compile(r"<(script|style)[^>]*>.*?</\1>|<[^>]+>", re.DOTALL | re.IGNORECASE)
+
 # Interstitials bot protection serves in place of the real page, with a 200 —
 # Imperva ("Pardon Our Interruption", dubizzle), Cloudflare, Akamai.
 BLOCK_TITLES = ("pardon our interruption", "just a moment", "attention required", "access denied")
+# Some block pages have no <title> at all — e.g. Imperva's hard block, "Request
+# unsuccessful. Incapsula incident ID: …", served once an IP is rate-limited.
+BLOCK_BODY_RE = re.compile(
+    r"Incapsula incident ID|_Incapsula_Resource|Request unsuccessful|cf-browser-verification|Access Denied",
+    re.IGNORECASE,
+)
 
 
 def scrape(url, with_details=False):
@@ -139,12 +140,24 @@ def scrape(url, with_details=False):
 
     status = getattr(page, "status", None)
     title = (page.css("title::text").get() or "").strip() or None
-    blocked = bool(title) and title.lower().startswith(BLOCK_TITLES)
+    html = (page.body or b"").decode(getattr(page, "encoding", None) or "utf-8", errors="replace")
+    blocked = (bool(title) and title.lower().startswith(BLOCK_TITLES)) or (
+        # Block pages are tiny; a real listing that merely mentions one of
+        # these strings is not.
+        len(html) < 20000 and bool(BLOCK_BODY_RE.search(html))
+    )
     result = {"status": status, "title": title, "price": None, "currency": None, "source": None, "blocked": blocked}
     if blocked:
         return result
 
-    html = (page.body or b"").decode(getattr(page, "encoding", None) or "utf-8", errors="replace")
+    # Landed on a search/category page instead of the listing — what some
+    # sites redirect a removed ad to. Every price on it is another car's.
+    if is_index_page(parse_json_blobs(page.css('script[type="application/ld+json"]::text').getall())):
+        result["gone_hint"] = True
+        if with_details:
+            result["details"], result["detail_sources"] = {}, {}
+        return result
+
     extractors = (
         ("json-ld", lambda: from_json_ld(page)),
         ("meta", lambda: from_meta(page)),
@@ -156,6 +169,11 @@ def scrape(url, with_details=False):
             result["price"], result["currency"] = found
             result["source"] = source
             break
+
+    # Sites that don't 404 a delisted ad usually say so in the page instead.
+    # Only trusted when no price was found, so a live listing that merely
+    # mentions "sold" somewhere (a "recently sold" widget) isn't flagged.
+    result["gone_hint"] = result["price"] is None and bool(GONE_RE.search(" ".join(TAG_RE.sub(" ", html).split())))
 
     if with_details:
         description = page.css('meta[name="description"]::attr(content)').get() or page.css(

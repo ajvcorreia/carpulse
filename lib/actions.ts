@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb, withTransaction } from "@/lib/db/client";
+import { callScraper, isGone, normalizeCurrency, type ListingDetails } from "@/lib/scraper";
 
 function parseNumber(value: FormDataEntryValue | null): number | null {
   if (value == null || value === "") return null;
@@ -573,58 +574,6 @@ export async function addPriceInline(_prevState: unknown, formData: FormData) {
   return { success: true as const };
 }
 
-type ScrapeResponse = {
-  status: number | null;
-  title: string | null;
-  price: number | null;
-  currency: string | null;
-  source: "json-ld" | "meta" | "text" | null;
-  blocked?: boolean;
-  // Only on /extract — see scraper/details.py.
-  details?: ListingDetails;
-  detail_sources?: Partial<Record<keyof ListingDetails, string>>;
-};
-
-export type ListingDetails = Partial<{
-  make: string;
-  model: string;
-  year: number;
-  km: number;
-  cylinders: number;
-  spec: string;
-  exterior_color: string;
-  interior_color: string;
-  ad_placed_at: string;
-}>;
-
-// POSTs a listing URL to the Scrapling sidecar (scraper/server.py).
-async function callScraper(
-  path: "/scrape" | "/extract",
-  url: string
-): Promise<{ ok: true; data: ScrapeResponse } | { ok: false; message: string }> {
-  const scraperUrl = process.env.SCRAPER_URL;
-  if (!scraperUrl) return { ok: false, message: "SCRAPER_URL isn't set, so there's no scraper to ask." };
-  try {
-    const res = await fetch(`${scraperUrl.replace(/\/$/, "")}${path}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url }),
-      // A headless browser waiting out bot checks is slow — leave headroom
-      // over the scraper's own 60s page timeout.
-      signal: AbortSignal.timeout(90_000),
-    });
-    const body = await res.json().catch(() => null);
-    if (!res.ok) return { ok: false, message: body?.error ?? `Scraper responded ${res.status}.` };
-    const data = body as ScrapeResponse;
-    if (data.blocked) return { ok: false, message: "The site's bot protection blocked the scraper — try again later." };
-    return { ok: true, data };
-  } catch (err) {
-    const message =
-      err instanceof Error && err.name === "TimeoutError" ? "Scraper timed out." : "Couldn't reach the scraper.";
-    return { ok: false, message };
-  }
-}
-
 export type ListingDetailsResult =
   | { kind: "error"; message: string }
   | {
@@ -643,9 +592,7 @@ export async function readListingDetails(url: string): Promise<ListingDetailsRes
   const result = await callScraper("/extract", url);
   if (!result.ok) return { kind: "error", message: result.message };
   const { data } = result;
-  if (data.status === 404 || data.status === 410) {
-    return { kind: "error", message: `Listing returned ${data.status} — it may have been removed.` };
-  }
+  if (isGone(data)) return { kind: "error", message: "The listing seems to be gone — it may have been removed." };
   const isAed = !data.currency || data.currency === "AED";
   return {
     kind: "ok",
@@ -678,7 +625,7 @@ export async function checkListingForUpdates(carId: string): Promise<ListingChec
   if (!result.ok) return { kind: "error", message: result.message };
   const { data } = result;
 
-  if (data.status === 404 || data.status === 410) return { kind: "gone", status: data.status };
+  if (isGone(data)) return { kind: "gone", status: data.status ?? 0 };
   if (data.price == null) return { kind: "no-price", title: data.title };
 
   const latest = db
@@ -687,9 +634,7 @@ export async function checkListingForUpdates(carId: string): Promise<ListingChec
     )
     .get(carId) as { price: number; currency: string } | undefined;
   const trackedCurrency = latest?.currency ?? "AED";
-  // Anything that isn't an ISO code (a site writing "Dirhams", say) can't be
-  // formatted or compared, so it's assumed to be the tracked one.
-  const currency = data.currency && /^[A-Z]{3}$/.test(data.currency) ? data.currency : trackedCurrency;
+  const currency = normalizeCurrency(data.currency, trackedCurrency);
   const price = Math.round(data.price);
 
   if (currency !== trackedCurrency) {
