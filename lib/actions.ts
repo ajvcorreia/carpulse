@@ -580,7 +580,80 @@ type ScrapeResponse = {
   currency: string | null;
   source: "json-ld" | "meta" | "text" | null;
   blocked?: boolean;
+  // Only on /extract — see scraper/details.py.
+  details?: ListingDetails;
+  detail_sources?: Partial<Record<keyof ListingDetails, string>>;
 };
+
+export type ListingDetails = Partial<{
+  make: string;
+  model: string;
+  year: number;
+  km: number;
+  cylinders: number;
+  spec: string;
+  exterior_color: string;
+  interior_color: string;
+  ad_placed_at: string;
+}>;
+
+// POSTs a listing URL to the Scrapling sidecar (scraper/server.py).
+async function callScraper(
+  path: "/scrape" | "/extract",
+  url: string
+): Promise<{ ok: true; data: ScrapeResponse } | { ok: false; message: string }> {
+  const scraperUrl = process.env.SCRAPER_URL;
+  if (!scraperUrl) return { ok: false, message: "SCRAPER_URL isn't set, so there's no scraper to ask." };
+  try {
+    const res = await fetch(`${scraperUrl.replace(/\/$/, "")}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url }),
+      // A headless browser waiting out bot checks is slow — leave headroom
+      // over the scraper's own 60s page timeout.
+      signal: AbortSignal.timeout(90_000),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) return { ok: false, message: body?.error ?? `Scraper responded ${res.status}.` };
+    const data = body as ScrapeResponse;
+    if (data.blocked) return { ok: false, message: "The site's bot protection blocked the scraper — try again later." };
+    return { ok: true, data };
+  } catch (err) {
+    const message =
+      err instanceof Error && err.name === "TimeoutError" ? "Scraper timed out." : "Couldn't reach the scraper.";
+    return { ok: false, message };
+  }
+}
+
+export type ListingDetailsResult =
+  | { kind: "error"; message: string }
+  | {
+      kind: "ok";
+      details: ListingDetails;
+      sources: Partial<Record<keyof ListingDetails, string>>;
+      // Only when it's AED — the add form records every price in AED.
+      price: number | null;
+    };
+
+// Pre-fills the add-car form: reads whatever the listing page exposes about
+// the car (site-agnostic — schema.org data, spec tables, page text). Nothing
+// is saved here; the form just fills its empty fields for review.
+export async function readListingDetails(url: string): Promise<ListingDetailsResult> {
+  if (!/^https?:\/\//i.test(url)) return { kind: "error", message: "Not a web URL." };
+  const result = await callScraper("/extract", url);
+  if (!result.ok) return { kind: "error", message: result.message };
+  const { data } = result;
+  if (data.status === 404 || data.status === 410) {
+    return { kind: "error", message: `Listing returned ${data.status} — it may have been removed.` };
+  }
+  const isAed = !data.currency || data.currency === "AED";
+  return {
+    kind: "ok",
+    details: data.details ?? {},
+    sources: data.detail_sources ?? {},
+    price: data.price != null && isAed && data.source !== "text" ? Math.round(data.price) : null,
+  };
+}
 
 export type ListingCheckResult =
   | { kind: "error"; message: string }
@@ -597,34 +670,15 @@ export type ListingCheckResult =
 // and logs a new price point if it changed. Experimental and manual for now
 // — the same call is what a scheduled auto-update would loop over later.
 export async function checkListingForUpdates(carId: string): Promise<ListingCheckResult> {
-  const scraperUrl = process.env.SCRAPER_URL;
-  if (!scraperUrl) return { kind: "error", message: "SCRAPER_URL isn't set, so there's no scraper to ask." };
-
   const db = getDb();
   const car = db.prepare("select url from cars where id = ?").get(carId) as { url: string } | undefined;
   if (!car) return { kind: "error", message: "That car no longer exists." };
 
-  let data: ScrapeResponse;
-  try {
-    const res = await fetch(`${scraperUrl.replace(/\/$/, "")}/scrape`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: car.url }),
-      // A headless browser waiting out bot checks is slow — leave headroom
-      // over the scraper's own 60s page timeout.
-      signal: AbortSignal.timeout(90_000),
-    });
-    const body = await res.json().catch(() => null);
-    if (!res.ok) return { kind: "error", message: body?.error ?? `Scraper responded ${res.status}.` };
-    data = body as ScrapeResponse;
-  } catch (err) {
-    const message =
-      err instanceof Error && err.name === "TimeoutError" ? "Scraper timed out." : "Couldn't reach the scraper.";
-    return { kind: "error", message };
-  }
+  const result = await callScraper("/scrape", car.url);
+  if (!result.ok) return { kind: "error", message: result.message };
+  const { data } = result;
 
   if (data.status === 404 || data.status === 410) return { kind: "gone", status: data.status };
-  if (data.blocked) return { kind: "error", message: "The site's bot protection blocked the check — try again later." };
   if (data.price == null) return { kind: "no-price", title: data.title };
 
   const latest = db

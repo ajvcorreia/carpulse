@@ -1,10 +1,14 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { AutocompleteInput } from "@/components/AutocompleteInput";
-import { checkCarDuplicate, createCar, relistCar } from "@/lib/actions";
+import { checkCarDuplicate, createCar, readListingDetails, relistCar, type ListingDetails } from "@/lib/actions";
 import { formatPrice } from "@/lib/format";
+
+// Field ids that were auto-filled from the listing page, so each Field can
+// flag itself without threading a prop through every one.
+const PrefilledContext = createContext<Set<string>>(new Set());
 
 function Field({
   id,
@@ -15,15 +19,41 @@ function Field({
   label: string;
   children: React.ReactNode;
 }) {
+  const prefilled = useContext(PrefilledContext).has(id);
   return (
     <div className="space-y-1">
       <label htmlFor={id} className="text-xs text-text-secondary">
         {label}
+        {prefilled ? <span className="text-series-1"> · from listing</span> : null}
       </label>
       {children}
     </div>
   );
 }
+
+// Prefer the spelling already used in the app — sites disagree on case and
+// punctuation ("Mercedes-Benz" vs "Mercedes Benz"), and a second spelling
+// would split filters and dodge duplicate detection.
+function matchOption(value: string, options: string[]) {
+  const squash = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const key = squash(value);
+  return options.find((o) => squash(o) === key) ?? value.trim();
+}
+
+const PREFILL_LABELS: Record<string, string> = {
+  make: "make",
+  model: "model",
+  year: "year",
+  km: "KM",
+  cylinders: "cylinders",
+  spec: "spec",
+  exterior_color: "exterior color",
+  interior_color: "interior color",
+  ad_placed_at: "ad date",
+  price: "price",
+};
+
+type PrefillState = { status: "loading" } | { status: "done"; filled: string[] } | { status: "error"; message: string };
 
 const inputClass =
   "w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-series-1";
@@ -140,7 +170,62 @@ export function NewCarForm({ url, options }: { url: string; options: FieldOption
   const [make, setMake] = useState("");
   const [model, setModel] = useState("");
   const [spec, setSpec] = useState("");
+  const [prefill, setPrefill] = useState<PrefillState>({ status: "loading" });
+  const [prefilled, setPrefilled] = useState<Set<string>>(new Set());
   const today = new Date().toISOString().slice(0, 10);
+
+  // Reads the listing once on open and fills whatever it found — but only
+  // into fields that are still empty, so anything typed while the (slow,
+  // headless-browser) fetch was running is never overwritten.
+  useEffect(() => {
+    let cancelled = false;
+    readListingDetails(url).then((result) => {
+      if (cancelled) return;
+      if (result.kind === "error") {
+        setPrefill({ status: "error", message: result.message });
+        return;
+      }
+      const filled: string[] = [];
+      const d: ListingDetails = result.details;
+
+      function fillControlled(key: string, value: string | undefined, set: (fn: (prev: string) => string) => void) {
+        if (!value) return;
+        const el = formRef.current?.elements.namedItem(key) as HTMLInputElement | null;
+        if (el?.value) return;
+        set((prev) => prev || value);
+        filled.push(key);
+      }
+      const makeValue = d.make ? matchOption(d.make, options.makes) : undefined;
+      fillControlled("make", makeValue, setMake);
+      const models = (makeValue && options.modelsByMake[makeValue.toLowerCase()]) || [];
+      fillControlled("model", d.model ? matchOption(d.model, models) : undefined, setModel);
+      fillControlled("spec", d.spec ? matchOption(d.spec, options.specs) : undefined, setSpec);
+
+      const plain: [string, string | number | undefined | null][] = [
+        ["year", d.year],
+        ["km", d.km],
+        ["cylinders", d.cylinders],
+        ["exterior_color", d.exterior_color],
+        ["interior_color", d.interior_color],
+        ["ad_placed_at", d.ad_placed_at],
+        ["price", result.price],
+      ];
+      for (const [key, value] of plain) {
+        const el = formRef.current?.elements.namedItem(key) as HTMLInputElement | null;
+        if (!el || el.value || value == null || value === "") continue;
+        el.value = String(value);
+        filled.push(key);
+      }
+
+      setPrefilled(new Set(filled));
+      setPrefill({ status: "done", filled });
+    });
+    return () => {
+      cancelled = true;
+    };
+    // Once per URL — options are stable server props for this page.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [url]);
 
   // Narrow model suggestions to the chosen make; an unrecognized (or empty)
   // make falls back to every model seen across all cars.
@@ -220,8 +305,24 @@ export function NewCarForm({ url, options }: { url: string; options: FieldOption
   }
 
   return (
+    <PrefilledContext.Provider value={prefilled}>
     <form ref={formRef} onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <input type="hidden" name="url" value={url} />
+
+      <p
+        className={`sm:col-span-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm ${
+          prefill.status === "error" ? "text-critical" : "text-text-secondary"
+        }`}
+        aria-live="polite"
+      >
+        {prefill.status === "loading"
+          ? "Reading the listing to fill in the details… (takes ~15s — you can start typing meanwhile)"
+          : prefill.status === "error"
+            ? `Couldn't read the listing: ${prefill.message} Fill in the details by hand.`
+            : prefill.filled.length > 0
+              ? `Filled ${prefill.filled.map((k) => PREFILL_LABELS[k] ?? k).join(", ")} from the listing — check them before saving.`
+              : "Read the listing, but found nothing to fill in — fill in the details by hand."}
+      </p>
 
       <Field id="make" label="Make">
         <AutocompleteInput
@@ -398,5 +499,6 @@ export function NewCarForm({ url, options }: { url: string; options: FieldOption
         )}
       </div>
     </form>
+    </PrefilledContext.Provider>
   );
 }

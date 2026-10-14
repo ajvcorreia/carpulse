@@ -9,6 +9,11 @@ a plain HTTP request lets it through) and returns what it could find:
 
 `blocked` means the site served a bot-protection page instead of the listing.
 
+POST /extract {"url": "..."} does the same fetch and also returns
+"details" ({make, model, year, km, cylinders, spec, exterior_color,
+interior_color, ad_placed_at} — whichever were found) plus "detail_sources"
+saying which layer each came from. See details.py; nothing is site-specific.
+
 `source` says how confident to be: "json-ld"/"meta" come from the page's own
 structured data (what the site tells search engines the price is), "text" is
 a best-effort regex over the visible page text and can pick up the wrong
@@ -26,6 +31,8 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from scrapling.fetchers import StealthyFetcher
+
+from details import extract_details
 
 PORT = int(os.environ.get("PORT", "8000"))
 FETCH_TIMEOUT_MS = int(os.environ.get("FETCH_TIMEOUT_MS", "60000"))
@@ -116,7 +123,7 @@ def from_text(html):
 BLOCK_TITLES = ("pardon our interruption", "just a moment", "attention required", "access denied")
 
 
-def scrape(url):
+def scrape(url, with_details=False):
     with fetch_lock:
         # The `wait` is what gets past dubizzle's Imperva check: its
         # interstitial runs a JS challenge and then reloads into the real
@@ -149,6 +156,18 @@ def scrape(url):
             result["price"], result["currency"] = found
             result["source"] = source
             break
+
+    if with_details:
+        description = page.css('meta[name="description"]::attr(content)').get() or page.css(
+            'meta[property="og:description"]::attr(content)'
+        ).get()
+        result["details"], result["detail_sources"] = extract_details(
+            page.css('script[type="application/ld+json"]::text').getall(),
+            page.css('script[type="application/json"]::text').getall(),
+            html,
+            title or "",
+            description or "",
+        )
     return result
 
 
@@ -168,7 +187,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, {"error": "Not found"})
 
     def do_POST(self):
-        if self.path != "/scrape":
+        if self.path not in ("/scrape", "/extract"):
             self._send(404, {"error": "Not found"})
             return
         try:
@@ -181,7 +200,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(400, {"error": "A http(s) url is required."})
             return
         try:
-            self._send(200, scrape(url))
+            self._send(200, scrape(url, with_details=self.path == "/extract"))
         except Exception as err:  # noqa: BLE001 — report any fetch failure back to the app
             self._send(502, {"error": f"Fetch failed: {err}"})
 

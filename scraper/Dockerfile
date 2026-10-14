@@ -20,7 +20,7 @@ RUN pip install --no-cache-dir "scrapling[fetchers]==0.4.15" \
     && patchright install chromium \
     && rm -rf /var/lib/apt/lists/*
 
-COPY server.py ./
+COPY server.py details.py ./
 
 EXPOSE 8000
 ENV PORT=8000
