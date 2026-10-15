@@ -1139,8 +1139,6 @@ export function CarsTable({
                           </p>
                         ) : null}
 
-                        <PhotoCarousel photos={car.photos} label={`${car.year} ${car.make} ${car.model}`} />
-
                         <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
                           <div>
                             <dt className="text-text-secondary">Spec</dt>
@@ -1250,7 +1248,21 @@ export function CarsTable({
                           </div>
                         ) : null}
 
-                        <PriceChart points={points} />
+                        {car.photos.length > 0 ? (
+                          // Photos left, price chart right — side by side
+                          // from md up, stacked (photos first) on phones.
+                          <div className="grid grid-cols-1 items-center gap-4 md:grid-cols-2">
+                            {/* min-w-0: let the chart's ResponsiveContainer shrink to its column. */}
+                            <div className="min-w-0">
+                              <PhotoCarousel photos={car.photos} label={`${car.year} ${car.make} ${car.model}`} />
+                            </div>
+                            <div className="min-w-0">
+                              <PriceChart points={points} />
+                            </div>
+                          </div>
+                        ) : (
+                          <PriceChart points={points} />
+                        )}
 
                         <div className="space-y-1">
                           <h3 className="text-xs font-medium text-text-secondary">Add a new price update</h3>

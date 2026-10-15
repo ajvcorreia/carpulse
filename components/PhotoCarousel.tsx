@@ -46,7 +46,7 @@ export function PhotoCarousel({ photos, label }: { photos: CarPhoto[]; label: st
         if (start == null || end == null || count < 2) return;
         if (Math.abs(end - start) > 40) go(end < start ? 1 : -1);
       }}
-      className="relative w-full max-w-2xl overflow-hidden rounded-lg border border-border bg-black/5 outline-none focus-visible:border-series-1"
+      className="relative w-full overflow-hidden rounded-lg border border-border bg-black/5 outline-none focus-visible:border-series-1"
     >
       <a href={src(photos[current])} target="_blank" rel="noreferrer" title="Open full size">
         {/* eslint-disable-next-line @next/next/no-img-element -- served as-is from our own route; next/image would only re-encode it */}
