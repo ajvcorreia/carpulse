@@ -11,6 +11,7 @@ import { PriceHistoryList } from "@/components/PriceHistoryList";
 import { FavoriteToggle } from "@/components/FavoriteToggle";
 import { InlineAddPriceForm } from "@/components/InlineAddPriceForm";
 import { CheckListingButton } from "@/components/CheckListingButton";
+import { PhotoCarousel } from "@/components/PhotoCarousel";
 import { EditCarForm } from "@/components/EditCarForm";
 import { MergeBanner } from "@/components/MergeBanner";
 import { LinkBanner } from "@/components/LinkBanner";
@@ -1137,6 +1138,8 @@ export function CarsTable({
                             Struck out{car.strike_out_reason ? `: ${car.strike_out_reason}` : ""}
                           </p>
                         ) : null}
+
+                        <PhotoCarousel photos={car.photos} label={`${car.year} ${car.make} ${car.model}`} />
 
                         <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
                           <div>

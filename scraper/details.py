@@ -368,3 +368,191 @@ def extract_details(ld_blobs, json_blobs, html, title="", description=""):
                 fields[field] = value
                 sources[field] = layer
     return fields, sources
+
+
+# --- Photos ---------------------------------------------------------------
+#
+# Also site-agnostic, and anchored on what the page says is *this* car's
+# picture: the schema.org `image` and og:image. Pages are full of other
+# images (logos, icons, "similar cars"), so a gallery is only accepted if it
+# contains one of those anchors:
+#
+# 1. JSON-LD that already lists several images (the whole gallery).
+# 2. An array in the page's embedded JSON (Next.js/Nuxt state...) holding
+#    the anchor among other image URLs — e.g. a listing's `photos` field.
+# 3. <img>/<source>/<a> URLs in the HTML shaped like the anchor's: same host
+#    and path pattern, differing only in the per-photo id segments.
+# 4. Failing all that, just the anchors themselves.
+
+MAX_PHOTOS = 40
+IMAGE_EXT_RE = re.compile(r"\.(?:jpe?g|png|webp|avif)$", re.IGNORECASE)
+ID_SEGMENT_RE = re.compile(r"^[0-9a-f-]{6,}$", re.IGNORECASE)
+# Keys an image object in embedded JSON uses for its full-size URL, best first.
+IMAGE_VALUE_KEYS = ("main", "large", "full", "original", "big", "xl", "url", "src", "href", "contentUrl", "uri")
+
+
+def absolute_url(url, base):
+    from urllib.parse import urljoin
+
+    if not isinstance(url, str):
+        return None
+    url = url.strip()
+    if not url or url.startswith("data:"):
+        return None
+    url = urljoin(base, url) if base else url
+    return url if re.match(r"^https?://", url) else None
+
+
+def split_url(url):
+    from urllib.parse import urlsplit
+
+    parts = urlsplit(url)
+    return parts.netloc.lower(), [s for s in parts.path.split("/") if s]
+
+
+def image_key(url):
+    """What identifies a photo across its size/format variants — usually the
+    file name (an id or hash), with the extension and query dropped."""
+    _, segments = split_url(url)
+    if not segments:
+        return url
+    return IMAGE_EXT_RE.sub("", segments[-1]).lower()
+
+
+def has_image_ext(url):
+    _, segments = split_url(url)
+    return bool(segments) and bool(IMAGE_EXT_RE.search(segments[-1]))
+
+
+def image_shape(url):
+    """The URL with its per-photo segments wildcarded:
+    //cdn/images/a5235a/w_1300x760/sellers/<uuid>.jpg -> cdn/images/*/w_1300x760/sellers/*.jpg"""
+    host, segments = split_url(url)
+    if not segments:
+        return host
+    shaped = ["*" if ID_SEGMENT_RE.match(s) else s for s in segments[:-1]]
+    ext = IMAGE_EXT_RE.search(segments[-1])
+    shaped.append("*" + (ext.group(0).lower() if ext else ""))
+    return host + "/" + "/".join(shaped)
+
+
+def shape_size(shape):
+    """Largest number in a shape — prefers the w_1300x760 variant of a
+    gallery over its thumbnail strip when both contain every photo."""
+    return max((int(n) for n in re.findall(r"[0-9]+", shape)), default=0)
+
+
+def dedupe(urls):
+    seen, out = set(), []
+    for u in urls:
+        k = image_key(u)
+        if u and k not in seen:
+            seen.add(k)
+            out.append(u)
+    return out[:MAX_PHOTOS]
+
+
+def ld_images(ld_docs, base):
+    found = []
+    for doc in ld_docs:
+        for obj in walk_single(doc):
+            if not type_names(obj) & VEHICLE_TYPES:
+                continue
+            images = obj.get("image")
+            for img in images if isinstance(images, list) else [images]:
+                if isinstance(img, dict):
+                    img = img.get("contentUrl") or img.get("url")
+                url = absolute_url(img, base)
+                if url:
+                    found.append(url)
+    return dedupe(found)
+
+
+def image_from_item(item, anchor_keys, base):
+    """An image URL out of one array element (a string or an image object)."""
+    if isinstance(item, str):
+        url = absolute_url(item, base)
+        return url if url and (has_image_ext(url) or image_key(url) in anchor_keys) else None
+    if isinstance(item, dict):
+        for k in IMAGE_VALUE_KEYS:
+            url = image_from_item(item.get(k), anchor_keys, base) if isinstance(item.get(k), str) else None
+            if url:
+                return url
+        for v in item.values():
+            url = image_from_item(v, anchor_keys, base) if isinstance(v, str) else None
+            if url:
+                return url
+    return None
+
+
+def json_gallery(json_docs, anchor_keys, base):
+    best = []
+
+    def visit(node):
+        nonlocal best
+        if isinstance(node, dict):
+            for v in node.values():
+                visit(v)
+        elif isinstance(node, list):
+            urls = [u for u in (image_from_item(x, anchor_keys, base) for x in node) if u]
+            if len(urls) >= 2 and any(image_key(u) in anchor_keys for u in urls):
+                urls = dedupe(urls)
+                if len(urls) > len(best):
+                    best = urls
+            for v in node:
+                visit(v)
+
+    for doc in json_docs:
+        visit(doc)
+    return best
+
+
+def best_srcset(value):
+    best, best_w = None, -1
+    for part in (value or "").split(","):
+        bits = part.strip().split()
+        if not bits:
+            continue
+        w = re.match(r"^([0-9]+)[wx]$", bits[1]) if len(bits) > 1 else None
+        width = int(w.group(1)) if w else 0
+        if width >= best_w:
+            best, best_w = bits[0], width
+    return best
+
+
+def html_gallery(html_urls, anchor_keys, base):
+    urls = [u for u in (absolute_url(x, base) for x in html_urls) if u]
+    shapes = {image_shape(u) for u in urls if image_key(u) in anchor_keys}
+    best = []
+    best_size = -1
+    for shape in shapes:
+        members = dedupe([u for u in urls if image_shape(u) == shape])
+        size = shape_size(shape)
+        if len(members) > len(best) or (len(members) == len(best) and size > best_size):
+            best, best_size = members, size
+    return best
+
+
+def extract_images(ld_blobs, json_blobs, html_urls, og_urls, base=None):
+    """Returns this listing's photo URLs, gallery order, best size found."""
+    ld_docs = parse_json_blobs(ld_blobs)
+    if is_index_page(ld_docs):
+        return []
+    from_ld = ld_images(ld_docs, base)
+    if len(from_ld) >= 2:
+        return from_ld
+    anchors = dedupe(from_ld + [u for u in (absolute_url(x, base) for x in og_urls) if u])
+    if not anchors:
+        return []
+    anchor_keys = {image_key(u) for u in anchors}
+    for gallery in (
+        lambda: json_gallery(parse_json_blobs(json_blobs), anchor_keys, base),
+        lambda: html_gallery(html_urls, anchor_keys, base),
+    ):
+        try:
+            found = gallery()
+        except Exception:  # noqa: BLE001 — fall through to the next layer
+            continue
+        if len(found) >= 2:
+            return found
+    return anchors

@@ -74,10 +74,20 @@ function write(key: string, value: object) {
     .run(key, JSON.stringify(value));
 }
 
+export type PhotoSettings = {
+  // Download a listing's photos the first time its page is read (adding the
+  // car, "Check listing for updates", or a scan) — see lib/photos.ts.
+  enabled: boolean;
+};
+
+export const DEFAULT_PHOTO_SETTINGS: PhotoSettings = { enabled: false };
+
 export const getScanSettings = () => read("scan", DEFAULT_SCAN_SETTINGS);
 export const saveScanSettings = (s: ScanSettings) => write("scan", s);
 export const getEmailSettings = () => read("email", DEFAULT_EMAIL_SETTINGS);
 export const saveEmailSettings = (s: EmailSettings) => write("email", s);
+export const getPhotoSettings = () => read("photos", DEFAULT_PHOTO_SETTINGS);
+export const savePhotoSettings = (s: PhotoSettings) => write("photos", s);
 
 // Scheduler bookkeeping, kept apart from the user-facing settings: the local
 // date (in the scan timezone) the last *scheduled* run was started for, so

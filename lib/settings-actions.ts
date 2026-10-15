@@ -8,6 +8,7 @@ import { isScheduledSlotOpen, localNow } from "@/lib/scheduler";
 import {
   getEmailSettings,
   saveEmailSettings,
+  savePhotoSettings,
   saveScanSettings,
   setLastScheduledDate,
   type EmailSettings,
@@ -98,6 +99,12 @@ export async function sendTestEmailAction(formData: FormData): Promise<Result> {
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Sending failed." };
   }
+}
+
+export async function savePhotoSettingsAction(_prev: unknown, formData: FormData): Promise<Result> {
+  savePhotoSettings({ enabled: checkbox.parse(formData.get("enabled")) });
+  revalidatePath("/settings");
+  return { ok: true, message: "Saved." };
 }
 
 export async function runScanNowAction(): Promise<Result> {

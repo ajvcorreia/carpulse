@@ -54,6 +54,22 @@ get a summary by email after each scan, fill in the SMTP settings there — the
 password is stored in the SQLite database, so treat the data volume as
 sensitive.
 
+### Listing photos
+
+Turn on **Save listing photos** in Settings and a car's photos are
+downloaded the first time its listing is read: when you add it, click
+**Check listing for updates**, or a scan reaches it. They show in the car's
+expanded view as a carousel (arrow buttons, keyboard arrows, or swipe), and
+stay after the ad is taken down. Cars that already have photos aren't
+re-downloaded.
+
+The gallery is found without site-specific code: the listing's schema.org
+`image` list if it has several, otherwise an image array in the page's
+embedded JSON or a set of `<img>` URLs shaped like the listing's main photo
+(`og:image`). Files live in `data/photos/<car id>/` next to the database
+(override with `PHOTOS_DIR`), so they're on the same Docker volume. They
+aren't part of **Export**.
+
 ## Stack
 
 Next.js (App Router) + SQLite (via Node's built-in `node:sqlite`). Single-user,

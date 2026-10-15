@@ -6,7 +6,9 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb, withTransaction } from "@/lib/db/client";
+import { deletePhotoFiles, getPhotoFiles, grabPhotosIfMissing } from "@/lib/photos";
 import { callScraper, isGone, normalizeCurrency, type ListingDetails } from "@/lib/scraper";
+import { getPhotoSettings } from "@/lib/settings";
 
 function parseNumber(value: FormDataEntryValue | null): number | null {
   if (value == null || value === "") return null;
@@ -160,6 +162,15 @@ export async function checkCarDuplicate(formData: FormData) {
   return findPossibleDuplicate({ make, model, exteriorColor, interiorColor, km });
 }
 
+function parsePhotoUrls(value: FormDataEntryValue | null): string[] {
+  try {
+    const parsed: unknown = JSON.parse(String(value ?? "[]"));
+    return Array.isArray(parsed) ? parsed.filter((u): u is string => typeof u === "string").slice(0, 40) : [];
+  } catch {
+    return [];
+  }
+}
+
 export async function createCar(_prevState: unknown, formData: FormData) {
   const url = String(formData.get("url") ?? "").trim();
   const make = String(formData.get("make") ?? "").trim();
@@ -178,6 +189,8 @@ export async function createCar(_prevState: unknown, formData: FormData) {
   // history, own removed/favorite status) but immediately links it to the
   // existing one so both show up as "also listed at" each other.
   const alsoListedAtCarId = String(formData.get("also_listed_at_car_id") ?? "").trim() || null;
+  // Photo URLs the "Fill from listing" pre-fill found (readListingDetails).
+  const photoUrls = parsePhotoUrls(formData.get("photo_urls"));
 
   if (!url || !make || !model || year == null || price == null) {
     return { error: "URL, make, model, year, and price are required." };
@@ -200,6 +213,8 @@ export async function createCar(_prevState: unknown, formData: FormData) {
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Could not save the car." };
   }
+
+  await grabPhotosIfMissing(carId, photoUrls, url);
 
   revalidatePath("/");
   redirect(`/?highlight=${carId}`);
@@ -261,6 +276,9 @@ export async function relistCar(_prevState: unknown, formData: FormData) {
     };
   }
 
+  // Only fills in photos the car didn't have — a relist keeps its old ones.
+  await grabPhotosIfMissing(existingCarId, parsePhotoUrls(formData.get("photo_urls")), url);
+
   revalidatePath("/");
   redirect(`/?highlight=${existingCarId}`);
 }
@@ -302,6 +320,8 @@ export async function mergeCars(formData: FormData) {
   }
 
   const db = getDb();
+  // Files of photos dropped by the merge, deleted once it has committed.
+  let orphanedPhotoFiles: string[] = [];
 
   try {
     withTransaction(db, () => {
@@ -353,11 +373,20 @@ export async function mergeCars(formData: FormData) {
       // silently dropping the "also listed at" link would be a real loss.
       linkCarIds(db, keepCarId, mergeFromCarId);
 
+      // Photos: the kept car's own win; if it has none, it takes the merged
+      // car's. Whatever's left on the merged car goes with it (cascade).
+      if (getPhotoFiles(keepCarId).length === 0) {
+        db.prepare("update car_photos set car_id = ? where car_id = ?").run(keepCarId, mergeFromCarId);
+      } else {
+        orphanedPhotoFiles = getPhotoFiles(mergeFromCarId);
+      }
+
       db.prepare("delete from cars where id = ?").run(mergeFromCarId);
     });
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Could not merge these cars." };
   }
+  await deletePhotoFiles(orphanedPhotoFiles);
 
   revalidatePath("/");
   return { success: true as const };
@@ -582,6 +611,9 @@ export type ListingDetailsResult =
       sources: Partial<Record<keyof ListingDetails, string>>;
       // Only when it's AED — the add form records every price in AED.
       price: number | null;
+      // Photo URLs to download once the car is saved — empty unless the
+      // "Save listing photos" setting is on.
+      images: string[];
     };
 
 // Pre-fills the add-car form: reads whatever the listing page exposes about
@@ -599,10 +631,11 @@ export async function readListingDetails(url: string): Promise<ListingDetailsRes
     details: data.details ?? {},
     sources: data.detail_sources ?? {},
     price: data.price != null && isAed && data.source !== "text" ? Math.round(data.price) : null,
+    images: getPhotoSettings().enabled ? (data.images ?? []) : [],
   };
 }
 
-export type ListingCheckResult =
+export type ListingCheckResult = (
   | { kind: "error"; message: string }
   | { kind: "gone"; status: number }
   | { kind: "no-price"; title: string | null }
@@ -611,7 +644,12 @@ export type ListingCheckResult =
   // Found something, but not trusted enough to save on its own — a regex
   // hit over page text, or a currency that doesn't match what's tracked.
   // The client offers a one-click save instead.
-  | { kind: "unconfirmed"; price: number; currency: string; reason: string };
+  | { kind: "unconfirmed"; price: number; currency: string; reason: string }
+) & {
+  // Listing photos downloaded by this check — only the first check after
+  // "Save listing photos" is turned on finds a car with none.
+  photosSaved?: number;
+};
 
 // Asks the Scrapling sidecar (scraper/server.py) to fetch the car's listing
 // and logs a new price point if it changed. Experimental and manual for now
@@ -628,6 +666,11 @@ export async function checkListingForUpdates(carId: string): Promise<ListingChec
   if (isGone(data)) return { kind: "gone", status: data.status ?? 0 };
   if (data.price == null) return { kind: "no-price", title: data.title };
 
+  // Same bar as for saving a price: only a page whose structured data names
+  // a price is trusted to be the listing itself, so its photos are this car's.
+  const photosSaved = data.source === "text" ? 0 : await grabPhotosIfMissing(carId, data.images, car.url);
+  if (photosSaved > 0) revalidatePath("/");
+
   const latest = db
     .prepare(
       "select price, currency from price_history where car_id = ? order by recorded_at desc, created_at desc limit 1"
@@ -638,16 +681,22 @@ export async function checkListingForUpdates(carId: string): Promise<ListingChec
   const price = Math.round(data.price);
 
   if (currency !== trackedCurrency) {
-    return { kind: "unconfirmed", price, currency, reason: `Listing shows ${currency}, tracked in ${trackedCurrency}.` };
+    return {
+      kind: "unconfirmed",
+      price,
+      currency,
+      reason: `Listing shows ${currency}, tracked in ${trackedCurrency}.`,
+      photosSaved,
+    };
   }
-  if (latest && latest.price === price) return { kind: "unchanged", price, currency };
+  if (latest && latest.price === price) return { kind: "unchanged", price, currency, photosSaved };
   if (data.source === "text") {
     return { kind: "unconfirmed", price, currency, reason: "Guessed from page text, not the site's price data." };
   }
 
   insertPricePoint(db, carId, price, null);
   revalidatePath("/");
-  return { kind: "updated", price, previous: latest?.price ?? null, currency };
+  return { kind: "updated", price, previous: latest?.price ?? null, currency, photosSaved };
 }
 
 // Called directly from a client component (not bound to a <form action>),

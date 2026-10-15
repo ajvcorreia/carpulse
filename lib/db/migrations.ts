@@ -57,4 +57,24 @@ export const MIGRATIONS: { version: string; sql: string }[] = [
       create index scan_runs_started_idx on scan_runs (started_at desc);
     `,
   },
+  // Listing photos downloaded by the scraper (lib/photos.ts). The image files
+  // themselves live on disk next to the database; `file` is the path relative
+  // to the photos directory, so rows can move between cars (a merge) without
+  // moving files.
+  {
+    version: "0005_car_photos",
+    sql: `
+      create table car_photos (
+        id text primary key,
+        car_id text not null references cars (id) on delete cascade,
+        position integer not null,
+        file text not null,
+        content_type text not null,
+        source_url text,
+        created_at text not null default (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+      );
+
+      create index car_photos_car_idx on car_photos (car_id, position);
+    `,
+  },
 ];

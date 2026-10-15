@@ -23,6 +23,9 @@ export type ScrapeResponse = {
   blocked?: boolean;
   // No price, and the page says the ad is gone — for sites that don't 404.
   gone_hint?: boolean;
+  // The listing's photo URLs, gallery order (scraper/details.py,
+  // extract_images). Absent when blocked; empty on a search/index page.
+  images?: string[];
   // Only on /extract — see scraper/details.py.
   details?: ListingDetails;
   detail_sources?: Partial<Record<keyof ListingDetails, string>>;

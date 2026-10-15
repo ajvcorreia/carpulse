@@ -5,12 +5,13 @@ import { useRouter } from "next/navigation";
 import {
   runScanNowAction,
   saveEmailSettingsAction,
+  savePhotoSettingsAction,
   saveScanSettingsAction,
   sendTestEmailAction,
   stopScanAction,
 } from "@/lib/settings-actions";
 import type { ScanRunRow, ScanSummary } from "@/lib/scan";
-import type { EmailSettings, ScanSettings } from "@/lib/settings";
+import type { EmailSettings, PhotoSettings, ScanSettings } from "@/lib/settings";
 import { formatPrice } from "@/lib/format";
 
 const inputClass =
@@ -57,6 +58,21 @@ function timezones(current: string) {
     // very old runtime — just offer the saved one
   }
   return zones.includes(current) ? zones : [current, ...zones];
+}
+
+export function PhotoSettingsForm({ settings }: { settings: PhotoSettings }) {
+  const [result, action, pending] = useActionState(savePhotoSettingsAction, null);
+  return (
+    <form action={action} className="space-y-3 rounded-lg border border-border p-4">
+      <Checkbox name="enabled" label="Save listing photos" defaultChecked={settings.enabled} />
+      <div className="flex flex-wrap items-center gap-3">
+        <button type="submit" disabled={pending} className={primaryButtonClass}>
+          {pending ? "Saving…" : "Save"}
+        </button>
+        <ResultLine result={result} />
+      </div>
+    </form>
+  );
 }
 
 export function ScanSettingsForm({

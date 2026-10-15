@@ -10,6 +10,8 @@ a plain HTTP request lets it through) and returns what it could find:
 `blocked` means the site served a bot-protection page instead of the listing.
 `gone_hint` means no price was found and the page says the ad is gone ("no
 longer available", "listing expired"...) — for sites that don't 404.
+`images` lists the listing's photo URLs (see extract_images in details.py);
+the app downloads them itself.
 
 POST /extract {"url": "..."} does the same fetch and also returns
 "details" ({make, model, year, km, cylinders, spec, exterior_color,
@@ -34,7 +36,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from scrapling.fetchers import StealthyFetcher
 
-from details import extract_details, is_index_page, parse_json_blobs, walk_single
+from details import best_srcset, extract_details, extract_images, is_index_page, parse_json_blobs, walk_single
 
 PORT = int(os.environ.get("PORT", "8000"))
 FETCH_TIMEOUT_MS = int(os.environ.get("FETCH_TIMEOUT_MS", "60000"))
@@ -124,6 +126,27 @@ BLOCK_BODY_RE = re.compile(
 )
 
 
+def html_image_urls(page):
+    """Every image URL the markup references, in document order — lazy-load
+    attributes and the largest srcset candidate included."""
+    urls = []
+    for el in page.css("img, source, a"):
+        attrs = el.attrib
+        if el.tag == "a":
+            href = attrs.get("href") or ""
+            if re.search(r"\.(?:jpe?g|png|webp|avif)(?:\?|$)", href, re.IGNORECASE):
+                urls.append(href)
+            continue
+        for name in ("src", "data-src", "data-lazy-src", "data-original"):
+            if attrs.get(name):
+                urls.append(attrs[name])
+        for name in ("srcset", "data-srcset"):
+            best = best_srcset(attrs.get(name))
+            if best:
+                urls.append(best)
+    return urls
+
+
 def scrape(url, with_details=False):
     with fetch_lock:
         # The `wait` is what gets past dubizzle's Imperva check: its
@@ -156,6 +179,7 @@ def scrape(url, with_details=False):
         result["gone_hint"] = True
         if with_details:
             result["details"], result["detail_sources"] = {}, {}
+        result["images"] = []
         return result
 
     extractors = (
@@ -174,6 +198,17 @@ def scrape(url, with_details=False):
     # Only trusted when no price was found, so a live listing that merely
     # mentions "sold" somewhere (a "recently sold" widget) isn't flagged.
     result["gone_hint"] = result["price"] is None and bool(GONE_RE.search(" ".join(TAG_RE.sub(" ", html).split())))
+
+    try:
+        result["images"] = extract_images(
+            page.css('script[type="application/ld+json"]::text').getall(),
+            page.css('script[type="application/json"]::text').getall(),
+            html_image_urls(page),
+            page.css('meta[property="og:image"]::attr(content)').getall(),
+            base=getattr(page, "url", None) or url,
+        )
+    except Exception:  # noqa: BLE001 — photos are a bonus; never fail the price check over them
+        result["images"] = []
 
     if with_details:
         description = page.css('meta[name="description"]::attr(content)').get() or page.css(

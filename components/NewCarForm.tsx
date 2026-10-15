@@ -173,6 +173,9 @@ export function NewCarForm({ url, options }: { url: string; options: FieldOption
   const [spec, setSpec] = useState("");
   const [prefill, setPrefill] = useState<PrefillState>({ status: "loading" });
   const [prefilled, setPrefilled] = useState<Set<string>>(new Set());
+  // Listing photo URLs found by the pre-fill, downloaded once the car is
+  // saved (only ever non-empty with "Save listing photos" on in Settings).
+  const [photoUrls, setPhotoUrls] = useState<string[]>([]);
   const today = new Date().toISOString().slice(0, 10);
 
   // Reads the listing once on open and fills whatever it found — but only
@@ -219,6 +222,7 @@ export function NewCarForm({ url, options }: { url: string; options: FieldOption
       }
 
       setPrefilled(new Set(filled));
+      setPhotoUrls(result.images);
       setPrefill({ status: "done", filled });
     });
     return () => {
@@ -309,6 +313,7 @@ export function NewCarForm({ url, options }: { url: string; options: FieldOption
     <PrefilledContext.Provider value={prefilled}>
     <form ref={formRef} onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <input type="hidden" name="url" value={url} />
+      <input type="hidden" name="photo_urls" value={JSON.stringify(photoUrls)} />
 
       <p
         className={`sm:col-span-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm ${
@@ -323,6 +328,9 @@ export function NewCarForm({ url, options }: { url: string; options: FieldOption
             : prefill.filled.length > 0
               ? `Filled ${prefill.filled.map((k) => PREFILL_LABELS[k] ?? k).join(", ")} from the listing — check them before saving.`
               : "Read the listing, but found nothing to fill in — fill in the details by hand."}
+        {photoUrls.length > 0
+          ? ` Found ${photoUrls.length} photo${photoUrls.length === 1 ? "" : "s"} — saved along with the car.`
+          : null}
       </p>
 
       <Field id="make" label="Make">

@@ -19,7 +19,7 @@ export function CheckListingButton({ carId, className }: { carId: string; classN
     startChecking(async () => {
       const r = await checkListingForUpdates(carId);
       setResult(r);
-      if (r.kind === "updated") router.refresh();
+      if (r.kind === "updated" || (r.photosSaved ?? 0) > 0) router.refresh();
     });
   }
 
@@ -50,6 +50,11 @@ export function CheckListingButton({ carId, className }: { carId: string; classN
         {checking ? "Checking listing…" : "Check listing for updates"}
       </button>
       {result ? <ResultMessage result={result} saving={saving} onSave={saveUnconfirmed} /> : null}
+      {result?.photosSaved ? (
+        <span className="text-sm text-text-secondary">
+          Saved {result.photosSaved} photo{result.photosSaved === 1 ? "" : "s"}.
+        </span>
+      ) : null}
     </span>
   );
 }

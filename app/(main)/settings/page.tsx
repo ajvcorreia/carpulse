@@ -1,7 +1,9 @@
 import Link from "next/link";
-import { EmailSettingsForm, ScanRunsPanel, ScanSettingsForm } from "@/components/SettingsForms";
+import { EmailSettingsForm, PhotoSettingsForm, ScanRunsPanel, ScanSettingsForm } from "@/components/SettingsForms";
+import { getDb } from "@/lib/db/client";
+import { countCarsWithPhotos } from "@/lib/photos";
 import { getRecentScanRuns, isScanRunning } from "@/lib/scan";
-import { getEmailSettings, getLastScheduledDate, getScanSettings } from "@/lib/settings";
+import { getEmailSettings, getLastScheduledDate, getPhotoSettings, getScanSettings } from "@/lib/settings";
 
 // Reads the database on every request — never prerender at build time.
 export const dynamic = "force-dynamic";
@@ -11,6 +13,8 @@ export default async function SettingsPage() {
   const { smtpPassword, ...email } = getEmailSettings();
   const runs = getRecentScanRuns(10);
   const running = isScanRunning();
+  const carsWithPhotos = countCarsWithPhotos();
+  const totalCars = (getDb().prepare("select count(*) as n from cars").get() as { n: number }).n;
 
   return (
     <div className="mx-auto max-w-2xl space-y-8">
@@ -40,6 +44,19 @@ export default async function SettingsPage() {
           <p className="text-sm text-text-secondary">Run a scan now, or see what recent scans changed.</p>
         </div>
         <ScanRunsPanel runs={runs} running={running} timezone={scan.timezone} />
+      </section>
+
+      <section className="space-y-3">
+        <div className="space-y-1">
+          <h2 className="font-medium">Listing photos</h2>
+          <p className="text-sm text-text-secondary">
+            Downloads a car&apos;s photos from its listing and keeps them here, so they&apos;re still around after the ad
+            is taken down. Photos are saved the first time the listing is read with this on — when you add the car,
+            click &ldquo;Check listing for updates&rdquo;, or a scan reaches it — and shown in the car&apos;s expanded
+            view. {carsWithPhotos} of {totalCars} cars have photos.
+          </p>
+        </div>
+        <PhotoSettingsForm settings={getPhotoSettings()} />
       </section>
 
       <section className="space-y-3">

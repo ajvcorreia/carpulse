@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { getDb } from "@/lib/db/client";
 import { sendEmail } from "@/lib/email";
 import { formatPrice } from "@/lib/format";
+import { grabPhotosIfMissing } from "@/lib/photos";
 import { callScraper, isGone, normalizeCurrency } from "@/lib/scraper";
 import { getEmailSettings, getScanSettings, type EmailSettings } from "@/lib/settings";
 
@@ -122,6 +123,9 @@ async function checkCar(car: CarRow, summary: ScanSummary): Promise<"blocked" | 
     db.prepare("update cars set is_removed = 0 where id = ?").run(car.id);
     summary.reactivated.push(ref);
   }
+
+  // Off unless "Save listing photos" is on, and a no-op once the car has some.
+  await grabPhotosIfMissing(car.id, data.images, car.url);
 
   const latest = db
     .prepare(

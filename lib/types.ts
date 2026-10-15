@@ -39,4 +39,15 @@ export type ListingHistoryEntry = {
   replaced_at: string;
 };
 
-export type CarWithPrices = Car & { price_history: PricePoint[]; listing_history: ListingHistoryEntry[] };
+// A downloaded listing photo, served from /photos/{id} — see lib/photos.ts.
+export type CarPhoto = {
+  id: string;
+  car_id: string;
+  position: number;
+};
+
+export type CarWithPrices = Car & {
+  price_history: PricePoint[];
+  listing_history: ListingHistoryEntry[];
+  photos: CarPhoto[];
+};

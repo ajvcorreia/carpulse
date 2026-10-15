@@ -1,6 +1,6 @@
 import { getDb } from "@/lib/db/client";
 import { toCar, toListingHistoryEntry, toPricePoint } from "@/lib/db/mappers";
-import type { Car, CarWithPrices, ListingHistoryEntry, PricePoint } from "@/lib/types";
+import type { Car, CarPhoto, CarWithPrices, ListingHistoryEntry, PricePoint } from "@/lib/types";
 
 type RawCarRow = Omit<Car, "is_removed" | "is_favorite" | "is_struck_out"> & {
   is_removed: number;
@@ -46,10 +46,23 @@ function attachPriceHistory(rawCars: RawCarRow[]): CarWithPrices[] {
     else listingsByCarId.set(entry.car_id, [entry]);
   }
 
+  const photos = db
+    .prepare(`select id, car_id, position from car_photos where car_id in (${placeholders}) order by position asc`)
+    .all(...rawCars.map((c) => c.id)) as CarPhoto[];
+
+  const photosByCarId = new Map<string, CarPhoto[]>();
+  for (const photo of photos) {
+    // Plain-object copy — see toPricePoint in lib/db/mappers.ts.
+    const list = photosByCarId.get(photo.car_id);
+    if (list) list.push({ ...photo });
+    else photosByCarId.set(photo.car_id, [{ ...photo }]);
+  }
+
   return rawCars.map((row) => ({
     ...toCar(row),
     price_history: byCarId.get(row.id) ?? [],
     listing_history: listingsByCarId.get(row.id) ?? [],
+    photos: photosByCarId.get(row.id) ?? [],
   }));
 }
 
