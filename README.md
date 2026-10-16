@@ -37,8 +37,9 @@ and fills any still-empty fields for you to review.
 
 ### Automatic scans
 
-**Settings** (header link) turns on a daily or weekly scan at a set time and
-timezone. A scan checks every car that isn't struck out, one at a time with a
+**Settings** (header link) turns on a daily or weekly scan at one or more
+start times (add a time for each scan you want that day) in a set timezone. A
+start time reached while a scan is still running is skipped. A scan checks every car that isn't struck out, one at a time with a
 random pause between cars (configurable, 10–40s by default):
 
 - **Price changed** — the new price is logged (only from the site's own

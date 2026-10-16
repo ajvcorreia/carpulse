@@ -75,15 +75,34 @@ export function PhotoSettingsForm({ settings }: { settings: PhotoSettings }) {
   );
 }
 
+// A default for a newly added start time: six hours after the last one.
+function nextStartTime(times: string[]) {
+  const [h, m] = (times.at(-1) ?? "00:00").split(":").map(Number);
+  return `${String((h + 6) % 24).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+// Rough length of a full scan with the saved pauses, so start times can be
+// spaced out — loading each page adds a few seconds per car on top.
+function scanDurationHint(carCount: number, s: ScanSettings) {
+  const minutes = (seconds: number) => Math.max(1, Math.round((carCount * seconds) / 60));
+  const span = (n: number) => (n >= 90 ? `${Math.round((n / 60) * 10) / 10} h` : `${n} min`);
+  return `A full scan of ${carCount} cars takes about ${span(minutes(s.minPauseSeconds + 5))}–${span(
+    minutes(s.maxPauseSeconds + 5)
+  )} with the saved pauses. A start time reached while a scan is still running is skipped.`;
+}
+
 export function ScanSettingsForm({
   settings,
-  lastScheduledDate,
+  lastScheduledSlot,
+  carCount,
 }: {
   settings: ScanSettings;
-  lastScheduledDate: string | null;
+  lastScheduledSlot: string | null;
+  carCount: number;
 }) {
   const [result, action, pending] = useActionState(saveScanSettingsAction, null);
   const [frequency, setFrequency] = useState(settings.frequency);
+  const [times, setTimes] = useState(settings.times);
 
   return (
     <form action={action} className="grid grid-cols-1 gap-4 rounded-lg border border-border p-4 sm:grid-cols-2">
@@ -115,8 +134,45 @@ export function ScanSettingsForm({
       ) : (
         <input type="hidden" name="weekday" value={settings.weekday} />
       )}
-      <Field id="time" label="Start time">
-        <input id="time" name="time" type="time" required defaultValue={settings.time} className={inputClass} />
+      <Field
+        id="time-0"
+        label={
+          times.length > 1
+            ? `Start times (${times.length} scans a ${frequency === "weekly" ? "week" : "day"})`
+            : "Start time"
+        }
+        hint={scanDurationHint(carCount, settings)}
+      >
+        <div className="space-y-2">
+          {times.map((t, i) => (
+            <div key={i} className="flex gap-2">
+              <input
+                id={`time-${i}`}
+                name="time"
+                type="time"
+                required
+                value={t}
+                onChange={(e) => setTimes((ts) => ts.map((x, j) => (j === i ? e.target.value : x)))}
+                className={inputClass}
+              />
+              {times.length > 1 ? (
+                <button
+                  type="button"
+                  onClick={() => setTimes((ts) => ts.filter((_, j) => j !== i))}
+                  aria-label={`Remove start time ${t}`}
+                  className={buttonClass}
+                >
+                  ✕
+                </button>
+              ) : null}
+            </div>
+          ))}
+          {times.length < 24 ? (
+            <button type="button" onClick={() => setTimes((ts) => [...ts, nextStartTime(ts)])} className={buttonClass}>
+              + Add start time
+            </button>
+          ) : null}
+        </div>
       </Field>
       <Field id="timezone" label="Timezone">
         <select id="timezone" name="timezone" defaultValue={settings.timezone} className={inputClass}>
@@ -156,10 +212,10 @@ export function ScanSettingsForm({
           </button>
           <ResultLine result={result} />
         </div>
-        {lastScheduledDate ? (
+        {lastScheduledSlot ? (
           <p className="text-xs text-text-muted">
-            Last scheduled slot: {lastScheduledDate}. A run missed while the app was down still starts later the same
-            day.
+            Last scheduled slot: {lastScheduledSlot}. A run missed while the app was down still starts once it&apos;s
+            back (several missed ones count as one).
           </p>
         ) : null}
       </div>

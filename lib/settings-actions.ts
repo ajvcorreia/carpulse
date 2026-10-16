@@ -4,13 +4,13 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { sendEmail } from "@/lib/email";
 import { isScanRunning, requestScanStop, startScan } from "@/lib/scan";
-import { isScheduledSlotOpen, localNow } from "@/lib/scheduler";
+import { currentSlot } from "@/lib/scheduler";
 import {
   getEmailSettings,
   saveEmailSettings,
   savePhotoSettings,
   saveScanSettings,
-  setLastScheduledDate,
+  setLastScheduledSlot,
   type EmailSettings,
   type ScanSettings,
 } from "@/lib/settings";
@@ -22,7 +22,11 @@ const checkbox = z.preprocess((v) => v === "on" || v === "true", z.boolean());
 const scanSchema = z
   .object({
     enabled: checkbox,
-    time: z.string().regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/, "Start time must be HH:MM."),
+    times: z
+      .array(z.string().regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/, "Start times must be HH:MM."))
+      .min(1, "Add at least one start time.")
+      .max(24, "At most 24 start times.")
+      .transform((times) => Array.from(new Set(times)).sort()),
     frequency: z.enum(["daily", "weekly"]),
     weekday: z.coerce.number().int().min(0).max(6),
     timezone: z.string().min(1),
@@ -32,7 +36,8 @@ const scanSchema = z
   .refine((s) => s.maxPauseSeconds >= s.minPauseSeconds, "Max pause must be at least the min pause.");
 
 export async function saveScanSettingsAction(_prev: unknown, formData: FormData): Promise<Result> {
-  const parsed = scanSchema.safeParse(Object.fromEntries(formData));
+  // One "time" input per start time, so they're read as a list.
+  const parsed = scanSchema.safeParse({ ...Object.fromEntries(formData), times: formData.getAll("time") });
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid settings." };
   const s: ScanSettings = parsed.data;
   try {
@@ -42,11 +47,11 @@ export async function saveScanSettingsAction(_prev: unknown, formData: FormData)
   }
   saveScanSettings(s);
 
-  // If today's slot has already passed, the next run is the *next* slot —
-  // otherwise saving at 10:00 a schedule for 06:00 would start a scan right
-  // away, as if it were catching up on a missed run.
-  const now = localNow(s.timezone);
-  if (isScheduledSlotOpen(s, now)) setLastScheduledDate(now.date);
+  // Start times already past today count as done, so the next run is the
+  // next upcoming time — otherwise saving at 10:00 a schedule for 06:00 would
+  // start a scan right away, as if it were catching up on a missed run.
+  const slot = currentSlot(s);
+  if (slot) setLastScheduledSlot(slot);
 
   revalidatePath("/settings");
   return { ok: true, message: "Saved." };

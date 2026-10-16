@@ -4,8 +4,9 @@ export type Frequency = "daily" | "weekly";
 
 export type ScanSettings = {
   enabled: boolean;
-  // "HH:MM", 24h, in `timezone`.
-  time: string;
+  // Start times, "HH:MM" 24h in `timezone`, sorted — one scan per time on
+  // each scheduled day.
+  times: string[];
   frequency: Frequency;
   // 0 = Sunday … 6 = Saturday; only used when frequency is "weekly".
   weekday: number;
@@ -35,7 +36,7 @@ export type EmailSettings = {
 
 export const DEFAULT_SCAN_SETTINGS: ScanSettings = {
   enabled: false,
-  time: "06:00",
+  times: ["06:00"],
   frequency: "daily",
   weekday: 1,
   timezone: "Asia/Dubai",
@@ -82,20 +83,30 @@ export type PhotoSettings = {
 
 export const DEFAULT_PHOTO_SETTINGS: PhotoSettings = { enabled: false };
 
-export const getScanSettings = () => read("scan", DEFAULT_SCAN_SETTINGS);
+export function getScanSettings(): ScanSettings {
+  // Not spread over the defaults first: a row saved back when there was a
+  // single `time` would otherwise pick up the default `times` instead.
+  const { time, ...saved } = read<Partial<ScanSettings> & { time?: string }>("scan", {});
+  const times =
+    Array.isArray(saved.times) && saved.times.length ? saved.times : time ? [time] : DEFAULT_SCAN_SETTINGS.times;
+  return { ...DEFAULT_SCAN_SETTINGS, ...saved, times };
+}
 export const saveScanSettings = (s: ScanSettings) => write("scan", s);
 export const getEmailSettings = () => read("email", DEFAULT_EMAIL_SETTINGS);
 export const saveEmailSettings = (s: EmailSettings) => write("email", s);
 export const getPhotoSettings = () => read("photos", DEFAULT_PHOTO_SETTINGS);
 export const savePhotoSettings = (s: PhotoSettings) => write("photos", s);
 
-// Scheduler bookkeeping, kept apart from the user-facing settings: the local
-// date (in the scan timezone) the last *scheduled* run was started for, so
-// each day/week fires once even across restarts.
-export function getLastScheduledDate(): string | null {
-  return read<{ date: string | null }>("scan_last_scheduled", { date: null }).date;
+// Scheduler bookkeeping, kept apart from the user-facing settings: the last
+// scheduled slot ("YYYY-MM-DD HH:MM", local to the scan timezone) that was
+// handled, so each start time fires once even across restarts.
+export function getLastScheduledSlot(): string | null {
+  const { slot, date } = read<{ slot?: string; date?: string }>("scan_last_scheduled", {});
+  if (slot) return slot;
+  // Saved back when there was one start time a day: that day is done.
+  return date ? `${date} ${getScanSettings().times.at(-1)}` : null;
 }
 
-export function setLastScheduledDate(date: string) {
-  write("scan_last_scheduled", { date });
+export function setLastScheduledSlot(slot: string) {
+  write("scan_last_scheduled", { slot });
 }

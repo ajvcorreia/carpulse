@@ -3,7 +3,7 @@ import { EmailSettingsForm, PhotoSettingsForm, ScanRunsPanel, ScanSettingsForm }
 import { getDb } from "@/lib/db/client";
 import { countCarsWithPhotos } from "@/lib/photos";
 import { getRecentScanRuns, isScanRunning } from "@/lib/scan";
-import { getEmailSettings, getLastScheduledDate, getPhotoSettings, getScanSettings } from "@/lib/settings";
+import { getEmailSettings, getLastScheduledSlot, getPhotoSettings, getScanSettings } from "@/lib/settings";
 
 // Reads the database on every request — never prerender at build time.
 export const dynamic = "force-dynamic";
@@ -15,6 +15,9 @@ export default async function SettingsPage() {
   const running = isScanRunning();
   const carsWithPhotos = countCarsWithPhotos();
   const totalCars = (getDb().prepare("select count(*) as n from cars").get() as { n: number }).n;
+  const scannedCars = (
+    getDb().prepare("select count(*) as n from cars where is_struck_out = 0").get() as { n: number }
+  ).n;
 
   return (
     <div className="mx-auto max-w-2xl space-y-8">
@@ -35,7 +38,7 @@ export default async function SettingsPage() {
             at a time with a random pause in between, so a full scan of many cars takes a while.
           </p>
         </div>
-        <ScanSettingsForm settings={scan} lastScheduledDate={getLastScheduledDate()} />
+        <ScanSettingsForm settings={scan} lastScheduledSlot={getLastScheduledSlot()} carCount={scannedCars} />
       </section>
 
       <section className="space-y-3">
