@@ -14,7 +14,9 @@ crawling.
   make/model/price/year (and the full spec on desktop); expanding it reveals
   the price chart, full history, edit form, and actions (favorite, mark
   removed, strike out, "Ask Claude" for engine/reliability insights).
-- A key-gated REST API (`/api/cars`) is also available for scripts/automation.
+- A key-gated REST API (`/api/**`) covers everything the UI does, for
+  scripts/automation and native clients such as the CarPulse iOS app (see
+  [REST API](#rest-api)).
 
 ### Checking a listing for updates (experimental)
 
@@ -133,3 +135,29 @@ The `-v carpulse-data:/app/data` volume is what makes the database survive
 the container being recreated — without it, restarting the container starts
 from an empty database. No project-specific build args needed: the same
 image works for anyone, pointed at whatever volume they mount.
+
+## REST API
+
+Every `/api` route needs the `X-API-Key` header set to `CARPULSE_API_KEY`
+(unaffected by `AUTH_USERNAME`/`AUTH_PASSWORD`). Bodies are JSON. Errors are
+`{"error": "message"}`, or a list of validation issues for a malformed body.
+
+| Method & path | What it does |
+| --- | --- |
+| `GET /api/cars` (`?url=` to look one up) | Every car with price history, listing history and photo ids |
+| `POST /api/cars` | Add a car with its first price (optionally `also_listed_at_car_id`, `photo_urls`) |
+| `GET` / `PATCH /api/cars/{id}` | One car / change details or flags (`is_favorite`, `is_removed`, `is_struck_out`, `strike_out_reason`) |
+| `POST /api/cars/{id}/prices`, `DELETE /api/cars/{id}/prices/{priceId}` | Log / delete a price |
+| `POST /api/cars/duplicate` | The add flow's "already tracked under another URL?" check |
+| `POST /api/cars/{id}/relist` | Same car re-listed at a new URL (keeps its history) |
+| `POST /api/cars/{id}/merge` | Merge `merge_from_car_id` into this car, with per-field picks |
+| `POST` / `DELETE /api/cars/{id}/link` | "Also listed at" another car (`car_id`) / unlink |
+| `POST /api/cars/{id}/opened` | Record that the listing was opened |
+| `POST /api/cars/{id}/check` | Check the listing for updates (scraper sidecar) |
+| `POST /api/listing-details` | Pre-fill details for a listing `url` (nothing saved) |
+| `GET /api/photos/{id}` | A saved listing photo |
+| `GET /api/options` | Make/model/spec suggestions |
+| `GET /api/export`, `POST /api/import` | Same JSON as the UI's Export/Import |
+| `GET /api/settings` | Scan, email (never the SMTP password) and photo settings |
+| `PUT /api/settings/scan` / `email` / `photos`, `POST /api/settings/email/test` | Save settings / send a test email |
+| `GET` / `POST /api/scans`, `POST /api/scans/stop` | Recent runs and whether one is running / start a scan / stop it |
