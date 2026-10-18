@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   runScanNowAction,
@@ -344,21 +345,35 @@ function formatWhen(iso: string, timezone: string) {
   }
 }
 
+// Opens the car's expanded card on the dashboard (same "?highlight=" link
+// the scan email uses), not the listing site.
+const carHref = (id: string) => `/?highlight=${encodeURIComponent(id)}`;
+
 function RunDetails({ summary }: { summary: ScanSummary }) {
-  const groups: { title: string; items: { key: string; text: string; url: string }[] }[] = [
+  const groups: { title: string; items: { key: string; text: string; href: string | null }[] }[] = [
     {
       title: "Price changes",
       items: summary.priceChanges.map((c) => ({
         key: c.id,
-        url: c.url,
+        href: carHref(c.id),
         text: `${c.label}: ${c.previous != null ? `${formatPrice(c.previous, c.currency)} → ` : ""}${formatPrice(c.price, c.currency)}`,
       })),
     },
-    { title: "Back on sale", items: summary.reactivated.map((c) => ({ key: c.id, url: c.url, text: c.label })) },
-    { title: "Marked removed", items: summary.removed.map((c) => ({ key: c.id, url: c.url, text: c.label })) },
+    {
+      title: "Back on sale",
+      items: summary.reactivated.map((c) => ({ key: c.id, href: carHref(c.id), text: c.label })),
+    },
+    {
+      title: "Marked removed",
+      items: summary.removed.map((c) => ({ key: c.id, href: carHref(c.id), text: c.label })),
+    },
     {
       title: "Couldn't check",
-      items: summary.problems.map((p, i) => ({ key: `${p.id}-${i}`, url: p.url, text: `${p.label}: ${p.message}` })),
+      items: summary.problems.map((p, i) => ({
+        key: `${p.id}-${i}`,
+        href: p.id ? carHref(p.id) : null,
+        text: `${p.label}: ${p.message}`,
+      })),
     },
   ].filter((g) => g.items.length > 0);
 
@@ -371,10 +386,10 @@ function RunDetails({ summary }: { summary: ScanSummary }) {
           <ul className="list-disc pl-5 text-sm">
             {g.items.map((item) => (
               <li key={item.key}>
-                {item.url ? (
-                  <a href={item.url} target="_blank" rel="noreferrer" className="hover:underline">
+                {item.href ? (
+                  <Link href={item.href} className="hover:underline">
                     {item.text}
-                  </a>
+                  </Link>
                 ) : (
                   item.text
                 )}

@@ -285,6 +285,10 @@ export function CarsTable({
   // everything else in place — no separate detail page to navigate to.
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [editingIds, setEditingIds] = useState<Set<string>>(new Set());
+  // The car a "?highlight=" link pointed at, shown even when the current
+  // filters would hide it (a removed car with "Hide removed" on, say) — until
+  // a filter is changed.
+  const [pinnedId, setPinnedId] = useState<string | null>(null);
   // A merge is a single list-wide session, not per-card state: pressing
   // "Merge with another car" on a card sets mergingFromId, which makes a
   // checkbox appear on every other (currently filtered/visible) row so the
@@ -330,9 +334,17 @@ export function CarsTable({
     if (!highlightId) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setExpandedIds((ids) => new Set(ids).add(highlightId));
-    document.getElementById(`car-${highlightId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
-    router.replace("/");
+    setPinnedId(highlightId);
+    // scroll: false — otherwise the navigation jumps back to the top.
+    router.replace("/", { scroll: false });
   }, [highlightId, router]);
+
+  // Scrolled once the pinned row has rendered — it may only appear because
+  // of the pin.
+  useEffect(() => {
+    // "start", not "center": an expanded card is often taller than the screen.
+    if (pinnedId) document.getElementById(`car-${pinnedId}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [pinnedId]);
 
   const rows = useMemo<Row[]>(
     () =>
@@ -374,7 +386,10 @@ export function CarsTable({
     [rows, filters]
   );
 
-  const filteredRows = useMemo(() => rows.filter((r) => matchesFilters(r, filters)), [rows, filters]);
+  const filteredRows = useMemo(
+    () => rows.filter((r) => r.car.id === pinnedId || matchesFilters(r, filters)),
+    [rows, filters, pinnedId]
+  );
 
   const sortedRows = useMemo(() => {
     const sorted = !sortKey
@@ -573,6 +588,7 @@ export function CarsTable({
   }
 
   function setFilter<K extends keyof Filters>(key: K, value: Filters[K]) {
+    setPinnedId(null);
     setFilters((f) => {
       const next = { ...f, [key]: value };
       // "Hide removed" and "Only removed" are mutually exclusive — together
@@ -585,6 +601,7 @@ export function CarsTable({
   }
 
   function resetFilters() {
+    setPinnedId(null);
     setFilters(DEFAULT_FILTERS);
     saveFilters(DEFAULT_FILTERS);
   }
