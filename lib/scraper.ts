@@ -32,7 +32,7 @@ export type ScrapeResponse = {
 };
 
 // The scraper's own steps, in order (scraper/server.py, scrape).
-export type ScraperStep = "queue" | "load" | "settle" | "blocked" | "price" | "photos";
+export type ScraperStep = "queue" | "load" | "settle" | "blocked" | "price" | "photos" | "details";
 export type StepState = "start" | "done" | "failed";
 export type OnScraperStep = (step: ScraperStep, state: StepState, detail?: string) => void;
 

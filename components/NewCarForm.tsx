@@ -3,7 +3,9 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { AutocompleteInput } from "@/components/AutocompleteInput";
+import { StepList, type Step } from "@/components/StepList";
 import { checkCarDuplicate, createCar, readListingDetails, relistCar } from "@/lib/actions";
+import type { ListingDetailsResult } from "@/lib/car-service";
 import type { ListingDetails } from "@/lib/scraper";
 import { formatPrice } from "@/lib/format";
 
@@ -55,6 +57,82 @@ const PREFILL_LABELS: Record<string, string> = {
 };
 
 type PrefillState = { status: "loading" } | { status: "done"; filled: string[] } | { status: "error"; message: string };
+
+// Reading the listing, step by step — all but the last run in the scraper
+// (scraper/server.py) and stream back as they happen, like on /scan.
+const READ_STEPS: [string, string][] = [
+  ["queue", "Waiting for the scraper's browser"],
+  ["load", "Loading the listing page"],
+  ["settle", "Waiting out the site's bot check"],
+  ["blocked", "Making sure it isn't a block page"],
+  ["price", "Reading the price"],
+  ["photos", "Finding the photos"],
+  ["details", "Reading the car's details"],
+  ["fill", "Filling in the form"],
+];
+
+type StepEvent = { step: string; state: "start" | "done" | "failed"; detail?: string };
+
+// Reads the listing through /add/read, handing each step to onStep as it
+// streams in. Falls back to the plain server action if streaming fails.
+async function readListing(url: string, onStep: (e: StepEvent) => void): Promise<ListingDetailsResult> {
+  try {
+    const res = await fetch("/add/read", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url }),
+    });
+    if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+    const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+    let buffer = "";
+    let result: ListingDetailsResult | null = null;
+    const handle = (line: string) => {
+      if (!line.trim()) return;
+      const msg = JSON.parse(line);
+      if (msg.result) result = msg.result;
+      else onStep(msg);
+    };
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += value;
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      lines.forEach(handle);
+    }
+    handle(buffer);
+    if (result) return result;
+    throw new Error("No result");
+  } catch {
+    return readListingDetails(url);
+  }
+}
+
+function freshSteps(): Step[] {
+  return READ_STEPS.map(([key, label]) => ({ key, label, state: "pending" }));
+}
+
+function elapsed(step: Step) {
+  return step.startedAt ? Date.now() - new Date(step.startedAt).getTime() : undefined;
+}
+
+function applyStep(steps: Step[], key: string, state: StepEvent["state"], detail?: string): Step[] {
+  return steps.map((s) => {
+    if (s.key !== key) return s;
+    if (state === "start") return { ...s, state: "running", startedAt: new Date().toISOString() };
+    return { ...s, state, ms: elapsed(s), detail: detail ?? s.detail };
+  });
+}
+
+// Whatever didn't get to run: the one in flight failed (or finished, if it
+// all went fine), the rest were skipped.
+function closeSteps(steps: Step[], ok: boolean, message?: string): Step[] {
+  return steps.map((s) => {
+    if (s.state === "running") return { ...s, state: ok ? "done" : "failed", ms: elapsed(s), detail: ok ? s.detail : message };
+    if (s.state === "pending") return { ...s, state: "skipped" };
+    return s;
+  });
+}
 
 const inputClass =
   "w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-series-1";
@@ -172,6 +250,10 @@ export function NewCarForm({ url, options }: { url: string; options: FieldOption
   const [model, setModel] = useState("");
   const [spec, setSpec] = useState("");
   const [prefill, setPrefill] = useState<PrefillState>({ status: "loading" });
+  const [steps, setSteps] = useState<Step[]>(freshSteps);
+  const [readStartedAt] = useState(() => Date.now());
+  const [readEndedAt, setReadEndedAt] = useState<number | null>(null);
+  const [now, setNow] = useState(() => Date.now());
   const [prefilled, setPrefilled] = useState<Set<string>>(new Set());
   // Listing photo URLs found by the pre-fill, downloaded once the car is
   // saved (only ever non-empty with "Save listing photos" on in Settings).
@@ -183,12 +265,24 @@ export function NewCarForm({ url, options }: { url: string; options: FieldOption
   // headless-browser) fetch was running is never overwritten.
   useEffect(() => {
     let cancelled = false;
-    readListingDetails(url).then((result) => {
+    readListing(url, (e) => {
+      if (!cancelled) setSteps((prev) => applyStep(prev, e.step, e.state, e.detail));
+    }).then((result) => {
       if (cancelled) return;
+      setReadEndedAt(Date.now());
       if (result.kind === "error") {
+        setSteps((prev) => closeSteps(prev, false, result.message));
         setPrefill({ status: "error", message: result.message });
         return;
       }
+      // A scraper that doesn't stream (an older image) only says it's done.
+      setSteps((prev) =>
+        applyStep(
+          prev.map((s) => (s.state === "pending" && s.key !== "fill" ? { ...s, state: "done" } : s)),
+          "fill",
+          "start"
+        )
+      );
       const filled: string[] = [];
       const d: ListingDetails = result.details;
 
@@ -224,6 +318,10 @@ export function NewCarForm({ url, options }: { url: string; options: FieldOption
       setPrefilled(new Set(filled));
       setPhotoUrls(result.images);
       setPrefill({ status: "done", filled });
+      const fillNote = filled.length
+        ? `${filled.length} field${filled.length === 1 ? "" : "s"} filled`
+        : "Nothing to fill";
+      setSteps((prev) => closeSteps(applyStep(prev, "fill", "done", fillNote), true));
     });
     return () => {
       cancelled = true;
@@ -231,6 +329,13 @@ export function NewCarForm({ url, options }: { url: string; options: FieldOption
     // Once per URL — options are stable server props for this page.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url]);
+
+  // Ticks the running step's timer while the listing is being read.
+  useEffect(() => {
+    if (prefill.status !== "loading") return;
+    const timer = setInterval(() => setNow(Date.now()), 200);
+    return () => clearInterval(timer);
+  }, [prefill.status]);
 
   // Narrow model suggestions to the chosen make; an unrecognized (or empty)
   // make falls back to every model seen across all cars.
@@ -315,12 +420,27 @@ export function NewCarForm({ url, options }: { url: string; options: FieldOption
       <input type="hidden" name="url" value={url} />
       <input type="hidden" name="photo_urls" value={JSON.stringify(photoUrls)} />
 
-      <p
-        className={`sm:col-span-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm ${
-          prefill.status === "error" ? "text-critical" : "text-text-secondary"
+      <div
+        className={`sm:col-span-2 space-y-3 rounded-lg border bg-surface p-4 ${
+          prefill.status === "loading" ? "border-series-1" : "border-border"
         }`}
-        aria-live="polite"
       >
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <p className="text-xs uppercase tracking-wide text-text-muted">
+            {prefill.status === "loading" ? "Reading the listing" : "Read the listing"}
+          </p>
+          <p className="text-xs tabular-nums text-text-muted">
+            {Math.max(0, Math.round(((readEndedAt ?? now) - readStartedAt) / 1000))} s
+            {prefill.status === "loading" ? " so far" : " in total"}
+          </p>
+        </div>
+        <StepList steps={steps} now={now} />
+        <p
+          className={`border-t border-border pt-3 text-sm ${
+            prefill.status === "error" ? "text-critical" : "text-text-secondary"
+          }`}
+          aria-live="polite"
+        >
         {prefill.status === "loading"
           ? "Reading the listing to fill in the details… (takes ~15s — you can start typing meanwhile)"
           : prefill.status === "error"
@@ -331,7 +451,8 @@ export function NewCarForm({ url, options }: { url: string; options: FieldOption
         {photoUrls.length > 0
           ? ` Found ${photoUrls.length} photo${photoUrls.length === 1 ? "" : "s"} — saved along with the car.`
           : null}
-      </p>
+        </p>
+      </div>
 
       <Field id="make" label="Make">
         <AutocompleteInput

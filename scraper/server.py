@@ -156,7 +156,7 @@ SOURCE_NAMES = {"json-ld": "structured data", "meta": "page tags", "text": "page
 def scrape(url, with_details=False, progress=None):
     """`progress(step, state, detail=None)`, when given, is told as each step
     starts and ends — what the live scan page shows. Steps: queue, load,
-    settle, blocked, price, photos."""
+    settle, blocked, price, photos, and details on /extract."""
     step = progress or (lambda *_args, **_kwargs: None)
 
     def loaded(pg):
@@ -251,6 +251,7 @@ def scrape(url, with_details=False, progress=None):
     step("photos", "done", f"{count} photo{'' if count == 1 else 's'} found")
 
     if with_details:
+        step("details", "start")
         description = page.css('meta[name="description"]::attr(content)').get() or page.css(
             'meta[property="og:description"]::attr(content)'
         ).get()
@@ -261,6 +262,8 @@ def scrape(url, with_details=False, progress=None):
             title or "",
             description or "",
         )
+        found = len(result["details"])
+        step("details", "done", f"{found} detail{'' if found == 1 else 's'} found" if found else "Nothing found")
     return result
 
 

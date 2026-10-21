@@ -4,7 +4,7 @@ import { z } from "zod";
 import { getDb, withTransaction } from "@/lib/db/client";
 import { getCarsWithPrices } from "@/lib/data";
 import { deletePhotoFiles, getPhotoFiles, grabPhotosIfMissing } from "@/lib/photos";
-import { callScraper, isGone, normalizeCurrency, type ListingDetails } from "@/lib/scraper";
+import { callScraper, isGone, normalizeCurrency, type ListingDetails, type OnScraperStep } from "@/lib/scraper";
 import { getPhotoSettings } from "@/lib/settings";
 import { carLabel, withUndo } from "@/lib/undo";
 
@@ -493,9 +493,9 @@ export type ListingDetailsResult =
 // Pre-fills the add-car form: reads whatever the listing page exposes about
 // the car (site-agnostic — schema.org data, spec tables, page text). Nothing
 // is saved here; the form just fills its empty fields for review.
-export async function fetchListingDetails(url: string): Promise<ListingDetailsResult> {
+export async function fetchListingDetails(url: string, onStep?: OnScraperStep): Promise<ListingDetailsResult> {
   if (!/^https?:\/\//i.test(url)) return { kind: "error", message: "Not a web URL." };
-  const result = await callScraper("/extract", url);
+  const result = await callScraper("/extract", url, onStep);
   if (!result.ok) return { kind: "error", message: result.message };
   const { data } = result;
   if (isGone(data)) return { kind: "error", message: "The listing seems to be gone — it may have been removed." };
