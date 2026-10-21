@@ -18,6 +18,9 @@ POST /extract {"url": "..."} does the same fetch and also returns
 interior_color, ad_placed_at} — whichever were found) plus "detail_sources"
 saying which layer each came from. See details.py; nothing is site-specific.
 
+Either one with "progress": true in the body streams newline-delimited JSON
+instead — each step as it starts and ends, then the result (see _stream).
+
 `source` says how confident to be: "json-ld"/"meta" come from the page's own
 structured data (what the site tells search engines the price is), "text" is
 a best-effort regex over the visible page text and can pick up the wrong
@@ -147,8 +150,30 @@ def html_image_urls(page):
     return urls
 
 
-def scrape(url, with_details=False):
+SOURCE_NAMES = {"json-ld": "structured data", "meta": "page tags", "text": "page text"}
+
+
+def scrape(url, with_details=False, progress=None):
+    """`progress(step, state, detail=None)`, when given, is told as each step
+    starts and ends — what the live scan page shows. Steps: queue, load,
+    settle, blocked, price, photos."""
+    step = progress or (lambda *_args, **_kwargs: None)
+
+    def loaded(pg):
+        # Scrapling calls this once the page has loaded, just before the
+        # `wait` below — so it splits "loading" from "waiting out the check".
+        try:
+            title = (pg.title() or "").strip()
+        except Exception:  # noqa: BLE001 — only a label
+            title = ""
+        step("load", "done", f"“{title[:80]}”" if title else None)
+        step("settle", "start")
+        return pg
+
+    step("queue", "start")
     with fetch_lock:
+        step("queue", "done")
+        step("load", "start")
         # The `wait` is what gets past dubizzle's Imperva check: its
         # interstitial runs a JS challenge and then reloads into the real
         # listing, which takes a few seconds after the network first idles.
@@ -159,8 +184,11 @@ def scrape(url, with_details=False):
             wait=8000,
             google_search=False,
             timeout=FETCH_TIMEOUT_MS,
+            page_action=loaded if progress else None,
         )
+    step("settle", "done")
 
+    step("blocked", "start")
     status = getattr(page, "status", None)
     title = (page.css("title::text").get() or "").strip() or None
     html = (page.body or b"").decode(getattr(page, "encoding", None) or "utf-8", errors="replace")
@@ -171,8 +199,11 @@ def scrape(url, with_details=False):
     )
     result = {"status": status, "title": title, "price": None, "currency": None, "source": None, "blocked": blocked}
     if blocked:
+        step("blocked", "failed", "Bot protection served a block page")
         return result
+    step("blocked", "done", f"HTTP {status}" if status else None)
 
+    step("price", "start")
     # Landed on a search/category page instead of the listing — what some
     # sites redirect a removed ad to. Every price on it is another car's.
     if is_index_page(parse_json_blobs(page.css('script[type="application/ld+json"]::text').getall())):
@@ -180,6 +211,7 @@ def scrape(url, with_details=False):
         if with_details:
             result["details"], result["detail_sources"] = {}, {}
         result["images"] = []
+        step("price", "done", "Landed on a search page — the ad is gone")
         return result
 
     extractors = (
@@ -198,7 +230,13 @@ def scrape(url, with_details=False):
     # Only trusted when no price was found, so a live listing that merely
     # mentions "sold" somewhere (a "recently sold" widget) isn't flagged.
     result["gone_hint"] = result["price"] is None and bool(GONE_RE.search(" ".join(TAG_RE.sub(" ", html).split())))
+    if result["price"] is not None:
+        price_note = f"{result['currency'] or ''} {round(result['price']):,} · from {SOURCE_NAMES[result['source']]}"
+    else:
+        price_note = "No price — the page says the ad is gone" if result["gone_hint"] else "No price found"
+    step("price", "done", price_note.strip())
 
+    step("photos", "start")
     try:
         result["images"] = extract_images(
             page.css('script[type="application/ld+json"]::text').getall(),
@@ -209,6 +247,8 @@ def scrape(url, with_details=False):
         )
     except Exception:  # noqa: BLE001 — photos are a bonus; never fail the price check over them
         result["images"] = []
+    count = len(result["images"])
+    step("photos", "done", f"{count} photo{'' if count == 1 else 's'} found")
 
     if with_details:
         description = page.css('meta[name="description"]::attr(content)').get() or page.css(
@@ -245,17 +285,46 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             length = int(self.headers.get("Content-Length") or 0)
-            url = json.loads(self.rfile.read(length) or b"{}").get("url", "")
+            body = json.loads(self.rfile.read(length) or b"{}")
+            url = body.get("url", "")
         except (ValueError, AttributeError):
             self._send(400, {"error": 'Body must be JSON: {"url": "..."}'})
             return
         if not re.match(r"^https?://", str(url)):
             self._send(400, {"error": "A http(s) url is required."})
             return
+        with_details = self.path == "/extract"
+        if body.get("progress"):
+            self._stream(url, with_details)
+            return
         try:
-            self._send(200, scrape(url, with_details=self.path == "/extract"))
+            self._send(200, scrape(url, with_details=with_details))
         except Exception as err:  # noqa: BLE001 — report any fetch failure back to the app
             self._send(502, {"error": f"Fetch failed: {err}"})
+
+    def _stream(self, url, with_details):
+        """{"progress": true}: newline-delimited JSON instead — a
+        {"step", "state", "detail"} line as each step starts and ends, then
+        {"result": ...} or {"error": ...}. HTTP/1.0, so the body simply ends
+        when the connection closes."""
+        self.send_response(200)
+        self.send_header("Content-Type", "application/x-ndjson")
+        self.end_headers()
+
+        def line(obj):
+            try:
+                self.wfile.write(json.dumps(obj).encode() + b"\n")
+                self.wfile.flush()
+            except OSError:
+                pass  # The app gave up (stopped scan, timeout) — finish quietly.
+
+        def progress(step, state, detail=None):
+            line({"step": step, "state": state, **({"detail": detail} if detail else {})})
+
+        try:
+            line({"result": scrape(url, with_details=with_details, progress=progress)})
+        except Exception as err:  # noqa: BLE001 — report any fetch failure back to the app
+            line({"error": f"Fetch failed: {err}"})
 
 
 if __name__ == "__main__":

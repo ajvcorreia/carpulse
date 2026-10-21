@@ -31,9 +31,16 @@ export type ScrapeResponse = {
   detail_sources?: Partial<Record<keyof ListingDetails, string>>;
 };
 
+// The scraper's own steps, in order (scraper/server.py, scrape).
+export type ScraperStep = "queue" | "load" | "settle" | "blocked" | "price" | "photos";
+export type StepState = "start" | "done" | "failed";
+export type OnScraperStep = (step: ScraperStep, state: StepState, detail?: string) => void;
+
 export async function callScraper(
   path: "/scrape" | "/extract",
-  url: string
+  url: string,
+  // Given, the scraper streams its progress and this hears each step.
+  onStep?: OnScraperStep
 ): Promise<{ ok: true; data: ScrapeResponse } | { ok: false; message: string; blocked?: boolean }> {
   const scraperUrl = process.env.SCRAPER_URL;
   if (!scraperUrl) return { ok: false, message: "SCRAPER_URL isn't set, so there's no scraper to ask." };
@@ -41,13 +48,16 @@ export async function callScraper(
     const res = await fetch(`${scraperUrl.replace(/\/$/, "")}${path}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url }),
+      body: JSON.stringify(onStep ? { url, progress: true } : { url }),
       // A headless browser waiting out bot checks is slow — leave headroom
       // over the scraper's own 60s page timeout.
       signal: AbortSignal.timeout(90_000),
     });
-    const body = await res.json().catch(() => null);
-    if (!res.ok) return { ok: false, message: body?.error ?? `Scraper responded ${res.status}.` };
+    const body =
+      onStep && res.headers.get("content-type")?.includes("ndjson")
+        ? await readProgress(res, onStep)
+        : await res.json().catch(() => null);
+    if (!res.ok || body?.error) return { ok: false, message: body?.error ?? `Scraper responded ${res.status}.` };
     const data = body as ScrapeResponse;
     if (data.blocked) {
       return { ok: false, blocked: true, message: "The site's bot protection blocked the scraper — try again later." };
@@ -58,6 +68,32 @@ export async function callScraper(
       err instanceof Error && err.name === "TimeoutError" ? "Scraper timed out." : "Couldn't reach the scraper.";
     return { ok: false, message };
   }
+}
+
+// Reads the streamed reply: step lines go to onStep, and the last line holds
+// {result} or {error}. Returns the result (or {error}) like a plain reply.
+async function readProgress(res: Response, onStep: OnScraperStep) {
+  const reader = res.body!.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = "";
+  let final: { result?: ScrapeResponse; error?: string } | null = null;
+  const handle = (text: string) => {
+    if (!text.trim()) return;
+    const msg = JSON.parse(text);
+    if (msg.step) onStep(msg.step, msg.state, msg.detail);
+    else final = msg;
+  };
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += value;
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    lines.forEach(handle);
+  }
+  handle(buffer);
+  const got = final as { result?: ScrapeResponse; error?: string } | null;
+  if (!got) return { error: "The scraper stopped without an answer." };
+  return got.error ? { error: got.error } : (got.result ?? null);
 }
 
 // The listing is gone: a real 404/410, or a page saying so with no price.

@@ -2,9 +2,9 @@ import { randomUUID } from "node:crypto";
 import { getDb } from "@/lib/db/client";
 import { sendEmail } from "@/lib/email";
 import { formatPrice } from "@/lib/format";
-import { grabPhotosIfMissing } from "@/lib/photos";
-import { callScraper, isGone, normalizeCurrency } from "@/lib/scraper";
-import { getEmailSettings, getScanSettings, type EmailSettings } from "@/lib/settings";
+import { carHasPhotos, grabPhotosIfMissing } from "@/lib/photos";
+import { callScraper, isGone, normalizeCurrency, type ScraperStep } from "@/lib/scraper";
+import { getEmailSettings, getPhotoSettings, getScanSettings, type EmailSettings } from "@/lib/settings";
 
 // Checks every tracked car's listing in one pass: removed cars whose listing
 // is live again get reactivated, active cars whose listing is gone get marked
@@ -56,6 +56,29 @@ export type LiveCarStatus =
   | "problem"
   | "skipped";
 
+export type LiveStepKey = ScraperStep | "compare" | "save";
+export type LiveStep = {
+  key: LiveStepKey;
+  label: string;
+  state: "pending" | "running" | "done" | "failed" | "skipped";
+  startedAt?: string;
+  ms?: number;
+  detail?: string;
+};
+
+// Every step of checking one listing, in order — the first six run in the
+// scraper (scraper/server.py) and are streamed back as they happen.
+const STEPS: [LiveStepKey, string][] = [
+  ["queue", "Waiting for the scraper's browser"],
+  ["load", "Loading the listing page"],
+  ["settle", "Waiting out the site's bot check"],
+  ["blocked", "Making sure it isn't a block page"],
+  ["price", "Reading the price"],
+  ["photos", "Finding the photos"],
+  ["compare", "Comparing with the last price"],
+  ["save", "Saving the photos"],
+];
+
 export type LiveCar = {
   id: string;
   label: string;
@@ -67,6 +90,8 @@ export type LiveCar = {
   change?: number;
   // How long the check took.
   seconds?: number;
+  // Filled in once the car's check starts.
+  steps?: LiveStep[];
 };
 
 export type LiveScan = {
@@ -155,84 +180,149 @@ function carRef(car: CarRow): CarRef {
 // bot protection refused the request, so the run can back off from it.
 type Outcome = { status: LiveCarStatus; detail: string; blocked?: boolean; change?: number; photos?: number };
 
-async function checkCar(car: CarRow, summary: ScanSummary): Promise<Outcome> {
+// Ticks off one car's steps as they happen, timing each.
+function stepTracker(liveCar: LiveCar) {
+  const steps: LiveStep[] = STEPS.map(([key, label]) => ({ key, label, state: "pending" }));
+  liveCar.steps = steps;
+  const find = (key: LiveStepKey) => steps.find((s) => s.key === key)!;
+  const start = (key: LiveStepKey) => {
+    Object.assign(find(key), { state: "running", startedAt: new Date().toISOString() });
+  };
+  const finish = (key: LiveStepKey, state: "done" | "failed" | "skipped", detail?: string) => {
+    const step = find(key);
+    step.state = state;
+    if (step.startedAt) step.ms = Date.now() - Date.parse(step.startedAt);
+    if (detail) step.detail = detail;
+  };
+  return {
+    start,
+    finish,
+    // Runs a step that starts and ends on our side, timed.
+    run: <T>(key: LiveStepKey, fn: () => T) => {
+      start(key);
+      return fn();
+    },
+    // A scraper that doesn't stream (an older image) only says it's done.
+    scraperDone() {
+      for (const s of steps.slice(0, 6)) if (s.state === "pending" || s.state === "running") finish(s.key, "done");
+    },
+    // Whatever didn't get to run: the one in flight failed (or finished, if
+    // the check went fine), the rest were skipped.
+    close(ok: boolean, detail?: string) {
+      for (const s of steps) {
+        if (s.state === "running") finish(s.key, ok ? "done" : "failed", ok ? undefined : detail);
+        else if (s.state === "pending") finish(s.key, "skipped");
+      }
+    },
+  };
+}
+
+type Steps = ReturnType<typeof stepTracker>;
+
+async function checkCar(car: CarRow, summary: ScanSummary, steps: Steps): Promise<Outcome> {
   const db = getDb();
   const ref = carRef(car);
 
-  const result = await callScraper("/scrape", car.url);
+  const result = await callScraper("/scrape", car.url, (key, state, detail) =>
+    state === "start" ? steps.start(key) : steps.finish(key, state, detail)
+  );
   if (!result.ok) {
     summary.problems.push({ ...ref, message: result.message });
+    steps.close(false, result.message);
     return { status: "problem", detail: result.message, blocked: result.blocked };
   }
+  steps.scraperDone();
   const { data } = result;
 
-  if (isGone(data)) {
-    if (!car.is_removed) {
-      db.prepare("update cars set is_removed = 1 where id = ?").run(car.id);
-      summary.removed.push(ref);
-      return { status: "removed", detail: "Listing is gone — marked removed." };
+  const decided = steps.run("compare", (): Outcome & { compareNote: string } => {
+    if (isGone(data)) {
+      if (!car.is_removed) {
+        db.prepare("update cars set is_removed = 1 where id = ?").run(car.id);
+        summary.removed.push(ref);
+        return { status: "removed", detail: "Listing is gone — marked removed.", compareNote: "Gone — marked removed" };
+      }
+      return { status: "unchanged", detail: "Still gone.", compareNote: "Still gone" };
     }
-    return { status: "unchanged", detail: "Still gone." };
-  }
 
-  // Only a price from the site's own structured data proves this is the live
-  // listing — a text-regex hit could come from a "similar cars" widget on a
-  // page that otherwise says nothing useful.
-  if (data.price == null || data.source === "text") {
-    const message = "Page loaded, but no price data was found on it.";
-    if (!car.is_removed) {
+    // Only a price from the site's own structured data proves this is the live
+    // listing — a text-regex hit could come from a "similar cars" widget on a
+    // page that otherwise says nothing useful.
+    if (data.price == null || data.source === "text") {
+      const message = "Page loaded, but no price data was found on it.";
+      if (!car.is_removed) {
+        summary.problems.push({ ...ref, message });
+        return { status: "problem", detail: message, compareNote: "No trustworthy price to compare" };
+      }
+      return { status: "unchanged", detail: "Still removed — no price on the page.", compareNote: "Still removed" };
+    }
+
+    const notes: string[] = [];
+    let status: LiveCarStatus = "unchanged";
+    if (car.is_removed) {
+      db.prepare("update cars set is_removed = 0 where id = ?").run(car.id);
+      summary.reactivated.push(ref);
+      status = "reactivated";
+      notes.push("Back on sale");
+    }
+
+    const latest = db
+      .prepare(
+        "select price, currency from price_history where car_id = ? order by recorded_at desc, created_at desc limit 1"
+      )
+      .get(car.id) as { price: number; currency: string } | undefined;
+    const trackedCurrency = latest?.currency ?? "AED";
+    const currency = normalizeCurrency(data.currency, trackedCurrency);
+    const price = Math.round(data.price);
+
+    if (currency !== trackedCurrency) {
+      const message = `Listing shows ${formatPrice(price, currency)}, but it's tracked in ${trackedCurrency} — not saved.`;
       summary.problems.push({ ...ref, message });
-      return { status: "problem", detail: message };
+      return { status: "problem", detail: message, compareNote: "Different currency — not saved" };
     }
-    return { status: "unchanged", detail: "Still removed — no price on the page." };
-  }
+    if (latest && latest.price === price) {
+      notes.push(`No change — ${formatPrice(price, currency)}`);
+      return { status, detail: notes.join(" · "), compareNote: "Same price" };
+    }
 
-  const notes: string[] = [];
-  let status: LiveCarStatus = "unchanged";
-  if (car.is_removed) {
-    db.prepare("update cars set is_removed = 0 where id = ?").run(car.id);
-    summary.reactivated.push(ref);
-    status = "reactivated";
-    notes.push("Back on sale");
-  }
+    db.prepare(
+      "insert into price_history (id, car_id, price, currency, recorded_at) values (?, ?, ?, ?, date('now'))"
+    ).run(randomUUID(), car.id, price, currency);
+    summary.priceChanges.push({ ...ref, previous: latest?.price ?? null, price, currency });
+    const change = latest
+      ? `${formatPrice(latest.price, currency)} → ${formatPrice(price, currency)}`
+      : formatPrice(price, currency);
+    notes.push(change);
+    return {
+      status: "price",
+      detail: notes.join(" · "),
+      change: latest ? price - latest.price : undefined,
+      compareNote: latest ? `Price changed — saved ${change}` : `First price saved — ${change}`,
+    };
+  });
+  const { compareNote, ...outcome } = decided;
+  steps.finish("compare", "done", compareNote);
 
+  if (isGone(data)) {
+    steps.finish("save", "skipped");
+    return outcome;
+  }
   // Off unless "Save listing photos" is on, and a no-op once the car has some.
+  const skipReason = !data.images?.length
+    ? "No photos on the listing"
+    : !getPhotoSettings().enabled
+      ? "Photo saving is off"
+      : carHasPhotos(car.id)
+        ? "Already saved"
+        : null;
+  if (skipReason) {
+    steps.finish("save", "skipped", skipReason);
+    return outcome;
+  }
+  steps.start("save");
   const photos = await grabPhotosIfMissing(car.id, data.images, car.url);
-  const photoNote = photos > 0 ? [`${photos} photo${photos === 1 ? "" : "s"} saved`] : [];
-
-  const latest = db
-    .prepare(
-      "select price, currency from price_history where car_id = ? order by recorded_at desc, created_at desc limit 1"
-    )
-    .get(car.id) as { price: number; currency: string } | undefined;
-  const trackedCurrency = latest?.currency ?? "AED";
-  const currency = normalizeCurrency(data.currency, trackedCurrency);
-  const price = Math.round(data.price);
-
-  if (currency !== trackedCurrency) {
-    const message = `Listing shows ${formatPrice(price, currency)}, but it's tracked in ${trackedCurrency} — not saved.`;
-    summary.problems.push({ ...ref, message });
-    return { status: "problem", detail: [message, ...photoNote].join(" · "), photos };
-  }
-  if (latest && latest.price === price) {
-    notes.push(`No change — ${formatPrice(price, currency)}`, ...photoNote);
-    return { status, detail: notes.join(" · "), photos };
-  }
-
-  db.prepare(
-    "insert into price_history (id, car_id, price, currency, recorded_at) values (?, ?, ?, ?, date('now'))"
-  ).run(randomUUID(), car.id, price, currency);
-  summary.priceChanges.push({ ...ref, previous: latest?.price ?? null, price, currency });
-  notes.push(
-    latest ? `${formatPrice(latest.price, currency)} → ${formatPrice(price, currency)}` : formatPrice(price, currency),
-    ...photoNote
-  );
-  return {
-    status: "price",
-    detail: notes.join(" · "),
-    change: latest ? price - latest.price : undefined,
-    photos,
-  };
+  const photoNote = `${photos} photo${photos === 1 ? "" : "s"} saved`;
+  steps.finish("save", photos > 0 ? "done" : "failed", photos > 0 ? photoNote : "Couldn't download them");
+  return photos > 0 ? { ...outcome, detail: `${outcome.detail} · ${photoNote}`, photos } : outcome;
 }
 
 // Sleeps in 1s steps so "Stop" doesn't have to wait out a whole pause.
@@ -343,8 +433,9 @@ async function runScan(runId: string, trigger: "schedule" | "manual", live: Live
       liveCar.status = "checking";
       setPhase(live, "checking");
       const startedAt = Date.now();
+      const steps = stepTracker(liveCar);
       try {
-        const outcome = await checkCar(car, summary);
+        const outcome = await checkCar(car, summary, steps);
         const blocks = outcome.blocked ? (consecutiveBlocks.get(host) ?? 0) + 1 : 0;
         consecutiveBlocks.set(host, blocks);
         if (blocks >= MAX_CONSECUTIVE_BLOCKS && !live.blockedHosts.includes(host)) live.blockedHosts.push(host);
@@ -353,6 +444,7 @@ async function runScan(runId: string, trigger: "schedule" | "manual", live: Live
       } catch (err) {
         const message = err instanceof Error ? err.message : "Check failed.";
         summary.problems.push({ ...carRef(car), message });
+        steps.close(false, message);
         Object.assign(liveCar, { status: "problem", detail: message });
       }
       liveCar.seconds = Math.round((Date.now() - startedAt) / 1000);
