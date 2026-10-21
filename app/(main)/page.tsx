@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { CarsTable } from "@/components/CarsTable";
+import { ScanLiveButton } from "@/components/ScanLiveButton";
 import { UndoBar } from "@/components/UndoBar";
 import { getCarsWithPrices, getCarFieldOptions } from "@/lib/data";
+import { getLiveScan } from "@/lib/scan";
 import { getLastUndo } from "@/lib/undo";
 
 export default async function DashboardPage({
@@ -9,6 +11,7 @@ export default async function DashboardPage({
 }: {
   searchParams: Promise<{ highlight?: string }>;
 }) {
+  const live = getLiveScan();
   const [cars, options, { highlight }] = await Promise.all([
     getCarsWithPrices(),
     getCarFieldOptions(),
@@ -20,7 +23,10 @@ export default async function DashboardPage({
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-semibold">Tracked cars</h1>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap justify-end gap-2">
+            <ScanLiveButton
+              initial={{ running: live.running, checked: live.scan?.checked ?? 0, total: live.scan?.total ?? 0 }}
+            />
             <a
               href="/export"
               className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text-secondary hover:border-series-1 hover:text-text-primary"

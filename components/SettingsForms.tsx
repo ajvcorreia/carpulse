@@ -476,9 +476,14 @@ export function ScanRunsPanel({ runs, running, timezone }: { runs: ScanRunRow[];
     <div className="space-y-3 rounded-lg border border-border p-4">
       <div className="flex flex-wrap items-center gap-3">
         {running ? (
-          <button type="button" onClick={() => run(stopScanAction)} disabled={pending} className={buttonClass}>
-            Stop scan
-          </button>
+          <>
+            <Link href="/scan" className={primaryButtonClass}>
+              Watch live
+            </Link>
+            <button type="button" onClick={() => run(stopScanAction)} disabled={pending} className={buttonClass}>
+              Stop scan
+            </button>
+          </>
         ) : (
           <button type="button" onClick={() => run(runScanNowAction)} disabled={pending} className={primaryButtonClass}>
             Run scan now

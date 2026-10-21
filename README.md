@@ -57,6 +57,11 @@ get a summary by email after each scan, fill in the SMTP settings there — the
 password is stored in the SQLite database, so treat the data volume as
 sensitive.
 
+While a scan runs, a **Watch live** button on the dashboard and in Settings
+opens `/scan`: progress and time left, the car being checked or the pause
+before the next one, running totals, and every car's result as it comes in
+(also `GET /api/scans/live`).
+
 ### Undo and backups
 
 The dashboard shows your last change — adding or relisting a car, a merge,
@@ -174,5 +179,6 @@ Every `/api` route needs the `X-API-Key` header set to `CARPULSE_API_KEY`
 | `GET /api/settings` | Scan, email (never the SMTP password) and photo settings |
 | `PUT /api/settings/scan` / `email` / `photos`, `POST /api/settings/email/test` | Save settings / send a test email |
 | `GET` / `POST /api/scans`, `POST /api/scans/stop` | Recent runs and whether one is running / start a scan / stop it |
+| `GET /api/scans/live` | The running scan's live state: each car's result so far, what it's doing now |
 | `GET` / `POST /api/undo` | The last undoable change / undo it (optional `id`: only if it's still the last) |
 | `GET` / `POST /api/backups`, `GET /api/backups/{name}` | List backups / make one now / download one |
