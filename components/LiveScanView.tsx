@@ -296,6 +296,8 @@ export function LiveScanView({ initial, timezone }: { initial: LiveState; timezo
   const remaining = scan.total - scan.checked;
   const eta = running && scan.checked > 0 && remaining > 0 ? (elapsed / scan.checked) * remaining : null;
   const current = scan.currentIndex != null ? scan.cars[scan.currentIndex] : null;
+  // Once the run is over, the last car it got to — its steps stay on show.
+  const lastChecked = running ? null : scan.cars.findLast((c) => c.steps);
   const pauseLeft = scan.phaseUntil ? new Date(scan.phaseUntil).getTime() - now : 0;
   const pauseTotal = scan.phaseUntil ? new Date(scan.phaseUntil).getTime() - new Date(scan.phaseSince).getTime() : 0;
   const nextCar = scan.currentIndex != null ? scan.cars[scan.currentIndex + 1] : null;
@@ -380,14 +382,12 @@ export function LiveScanView({ initial, timezone }: { initial: LiveState; timezo
                 />
               </div>
               {current?.steps ? (
-                <details className="pt-1">
-                  <summary className="cursor-pointer text-xs text-series-1">
-                    Just checked: {current.label}
-                  </summary>
-                  <div className="pt-2">
-                    <StepList steps={current.steps} now={now} />
-                  </div>
-                </details>
+                <div className="space-y-2 border-t border-border pt-3">
+                  <p className="text-xs uppercase tracking-wide text-text-muted">
+                    Just checked: <span className="normal-case text-text-primary">{current.label}</span>
+                  </p>
+                  <StepList steps={current.steps} now={now} />
+                </div>
               ) : null}
             </div>
           ) : scan.phase === "emailing" ? (
@@ -396,6 +396,13 @@ export function LiveScanView({ initial, timezone }: { initial: LiveState; timezo
             <p className="text-lg font-medium">Starting…</p>
           )}
           {scan.stopping ? <p className="mt-2 text-sm text-critical">Stopping after the current car…</p> : null}
+        </div>
+      ) : lastChecked?.steps ? (
+        <div className="space-y-2 rounded-lg border border-border bg-surface p-4">
+          <p className="text-xs uppercase tracking-wide text-text-muted">
+            Last car checked: <span className="normal-case text-text-primary">{lastChecked.label}</span>
+          </p>
+          <StepList steps={lastChecked.steps} now={now} />
         </div>
       ) : null}
 
