@@ -19,6 +19,7 @@ import {
   type ListingCheckResult,
   type ListingDetailsResult,
 } from "@/lib/car-service";
+import { carLabel, undoLastChange, withUndo } from "@/lib/undo";
 
 // Thin FormData wrappers over lib/car-service.ts, which holds the actual
 // logic so the REST API (app/api/**, used by the native app) shares it.
@@ -173,10 +174,14 @@ export async function updateCar(_prevState: unknown, formData: FormData) {
   const db = getDb();
 
   try {
-    db.prepare(
-      `update cars set url = ?, make = ?, model = ?, year = ?, km = ?, cylinders = ?, spec = ?,
-       exterior_color = ?, interior_color = ?, ad_placed_at = ? where id = ?`
-    ).run(f.url, f.make, f.model, f.year, f.km, f.cylinders, f.spec, f.exterior_color, f.interior_color, f.ad_placed_at, carId);
+    withUndo(db, `Edited ${carLabel(db, carId)}`, [carId], () =>
+      db
+        .prepare(
+          `update cars set url = ?, make = ?, model = ?, year = ?, km = ?, cylinders = ?, spec = ?,
+           exterior_color = ?, interior_color = ?, ad_placed_at = ? where id = ?`
+        )
+        .run(f.url, f.make, f.model, f.year, f.km, f.cylinders, f.spec, f.exterior_color, f.interior_color, f.ad_placed_at, carId)
+    );
   } catch (err) {
     return {
       error:
@@ -206,10 +211,10 @@ export async function setCarStruckOut(formData: FormData) {
   if (!carId) return;
 
   const db = getDb();
-  db.prepare("update cars set is_struck_out = ?, strike_out_reason = ? where id = ?").run(
-    struckOut ? 1 : 0,
-    struckOut ? reason : null,
-    carId
+  withUndo(db, `${struckOut ? "Struck out" : "Restored"} ${carLabel(db, carId)}`, [carId], () =>
+    db
+      .prepare("update cars set is_struck_out = ?, strike_out_reason = ? where id = ?")
+      .run(struckOut ? 1 : 0, struckOut ? reason : null, carId)
   );
 
   revalidatePath("/");
@@ -231,7 +236,9 @@ export async function markCarOpened(carId: string) {
 export async function setCarRemovedFlag(carId: string, removed: boolean) {
   if (!carId) return;
   const db = getDb();
-  db.prepare("update cars set is_removed = ? where id = ?").run(removed ? 1 : 0, carId);
+  withUndo(db, `Marked ${carLabel(db, carId)} ${removed ? "removed" : "active"}`, [carId], () =>
+    db.prepare("update cars set is_removed = ? where id = ?").run(removed ? 1 : 0, carId)
+  );
   revalidatePath("/");
 }
 
@@ -257,7 +264,9 @@ export async function addPrice(_prevState: unknown, formData: FormData) {
 
   const db = getDb();
   try {
-    insertPricePoint(db, carId, price, recordedAt);
+    withUndo(db, `Added a price to ${carLabel(db, carId)}`, [carId], () =>
+      insertPricePoint(db, carId, price, recordedAt)
+    );
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Could not save the price." };
   }
@@ -280,7 +289,9 @@ export async function addPriceInline(_prevState: unknown, formData: FormData) {
 
   const db = getDb();
   try {
-    insertPricePoint(db, carId, price, recordedAt);
+    withUndo(db, `Added a price to ${carLabel(db, carId)}`, [carId], () =>
+      insertPricePoint(db, carId, price, recordedAt)
+    );
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Could not save the price." };
   }
@@ -326,7 +337,9 @@ export async function deletePrice(formData: FormData) {
   // so this has to be re-spread into an actual plain object.
   const deleted = { ...row };
 
-  db.prepare("delete from price_history where id = ?").run(priceId);
+  withUndo(db, `Deleted a price from ${carLabel(db, carId)}`, [carId], () =>
+    db.prepare("delete from price_history where id = ?").run(priceId)
+  );
 
   revalidatePath("/");
   return { success: true as const, deleted };
@@ -347,13 +360,22 @@ export async function undoDeletePrice(formData: FormData) {
 
   const db = getDb();
   try {
-    insertPricePoint(db, carId, price, recordedAt, currency);
+    withUndo(db, `Restored a deleted price on ${carLabel(db, carId)}`, [carId], () =>
+      insertPricePoint(db, carId, price, recordedAt, currency)
+    );
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Could not restore that price." };
   }
 
   revalidatePath("/");
   return { success: true as const };
+}
+
+// "Undo" on the dashboard — expectedId is the change the button showed.
+export async function undoLastChangeAction(expectedId: string) {
+  const result = await undoLastChange(expectedId);
+  if (result.ok) revalidatePath("/");
+  return result;
 }
 
 export async function importData(_prevState: unknown, formData: FormData) {

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { checkApiKey } from "@/lib/api-auth";
 import { getDb } from "@/lib/db/client";
+import { carLabel, withUndo } from "@/lib/undo";
 
 const addPriceSchema = z.object({
   price: z.number().nonnegative(),
@@ -30,9 +31,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const priceId = randomUUID();
 
   try {
-    db.prepare(
-      "insert into price_history (id, car_id, price, currency, recorded_at) values (?, ?, ?, ?, coalesce(?, date('now')))"
-    ).run(priceId, id, body.price, body.currency, body.recorded_at ?? null);
+    withUndo(db, `Added a price to ${carLabel(db, id)}`, [id], () =>
+      db
+        .prepare(
+          "insert into price_history (id, car_id, price, currency, recorded_at) values (?, ?, ?, ?, coalesce(?, date('now')))"
+        )
+        .run(priceId, id, body.price, body.currency, body.recorded_at ?? null)
+    );
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Could not add price." },

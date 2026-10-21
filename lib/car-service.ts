@@ -6,6 +6,7 @@ import { getCarsWithPrices } from "@/lib/data";
 import { deletePhotoFiles, getPhotoFiles, grabPhotosIfMissing } from "@/lib/photos";
 import { callScraper, isGone, normalizeCurrency, type ListingDetails } from "@/lib/scraper";
 import { getPhotoSettings } from "@/lib/settings";
+import { carLabel, withUndo } from "@/lib/undo";
 
 // The car operations behind both the UI's server actions (lib/actions.ts)
 // and the key-gated REST API (app/api/**) — the native app talks to the
@@ -191,7 +192,7 @@ export async function createCarRecord(input: {
   const carId = randomUUID();
 
   try {
-    withTransaction(db, () => {
+    withUndo(db, `Added ${fields.year} ${fields.make} ${fields.model}`, [carId, input.alsoListedAtCarId ?? ""], () => {
       db.prepare(
         `insert into cars (id, url, make, model, year, km, cylinders, spec, exterior_color, interior_color, ad_placed_at)
          values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
@@ -245,7 +246,7 @@ export async function relistCarRecord(input: {
   const db = getDb();
 
   try {
-    withTransaction(db, () => {
+    withUndo(db, `Added a new listing to ${carLabel(db, existingCarId)}`, [existingCarId], () => {
       const previous = db.prepare("select url, ad_placed_at from cars where id = ?").get(existingCarId) as
         | { url: string; ad_placed_at: string | null }
         | undefined;
@@ -326,7 +327,8 @@ export async function mergeCarRecords(
   let orphanedPhotoFiles: string[] = [];
 
   try {
-    withTransaction(db, () => {
+    const label = `Merged ${carLabel(db, mergeFromCarId)} into ${carLabel(db, keepCarId)}`;
+    withUndo(db, label, [keepCarId, mergeFromCarId], () => {
       const mergeFrom = db.prepare("select url, ad_placed_at from cars where id = ?").get(mergeFromCarId) as
         | { url: string; ad_placed_at: string | null }
         | undefined;
@@ -413,7 +415,8 @@ export function linkCarRecords(carAId: string, carBId: string): ServiceResult {
 
   const db = getDb();
   try {
-    withTransaction(db, () => linkCarIds(db, carAId, carBId));
+    const label = `Linked ${carLabel(db, carAId)} and ${carLabel(db, carBId)} as the same car`;
+    withUndo(db, label, [carAId, carBId], () => linkCarIds(db, carAId, carBId));
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Could not link these cars." };
   }
@@ -431,7 +434,7 @@ export function unlinkCarRecord(carId: string): ServiceResult {
 
   const db = getDb();
   try {
-    withTransaction(db, () => {
+    withUndo(db, `Unlinked ${carLabel(db, carId)}`, [carId], () => {
       const car = db.prepare("select id, group_id from cars where id = ?").get(carId) as
         | { id: string; group_id: string | null }
         | undefined;

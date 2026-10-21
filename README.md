@@ -57,6 +57,19 @@ get a summary by email after each scan, fill in the SMTP settings there — the
 password is stored in the SQLite database, so treat the data volume as
 sensitive.
 
+### Undo and backups
+
+The dashboard shows your last change — adding or relisting a car, a merge,
+"also listed at", an edit, a price, a flag — with an **Undo** button that
+puts the affected cars back exactly as they were. Press it again to step
+further back (the last 20 changes are remembered). It restores whole cars,
+so anything a scan changed on them since is undone too.
+
+A copy of the database is also saved every day to `data/backups/` (override
+with `BACKUP_DIR`), keeping the last 14. **Settings → Backups** lists them
+for download and has **Back up now**. To restore one, stop the app and copy
+it over `data/carpulse.db`. Listing photos aren't in the backups.
+
 ### Listing photos
 
 Turn on **Save listing photos** in Settings and a car's photos are
@@ -161,3 +174,5 @@ Every `/api` route needs the `X-API-Key` header set to `CARPULSE_API_KEY`
 | `GET /api/settings` | Scan, email (never the SMTP password) and photo settings |
 | `PUT /api/settings/scan` / `email` / `photos`, `POST /api/settings/email/test` | Save settings / send a test email |
 | `GET` / `POST /api/scans`, `POST /api/scans/stop` | Recent runs and whether one is running / start a scan / stop it |
+| `GET` / `POST /api/undo` | The last undoable change / undo it (optional `id`: only if it's still the last) |
+| `GET` / `POST /api/backups`, `GET /api/backups/{name}` | List backups / make one now / download one |

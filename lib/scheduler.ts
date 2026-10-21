@@ -1,3 +1,4 @@
+import { createBackup, hasBackupFor } from "@/lib/backup";
 import { isScanRunning, markInterruptedRuns, startScan } from "@/lib/scan";
 import { getLastScheduledSlot, getScanSettings, setLastScheduledSlot, type ScanSettings } from "@/lib/settings";
 
@@ -39,7 +40,25 @@ export function currentSlot(s: ScanSettings, now = localNow(s.timezone)): string
   return passed.length ? `${now.date} ${passed[passed.length - 1]}` : null;
 }
 
+// Local date of the last backup attempt — once a day, so a failing one
+// (disk full, say) is logged daily rather than every minute.
+let backupTriedOn = "";
+
+// Today's backup (lib/backup.ts), made on the first tick of each local day,
+// whether or not scans are on.
+function dailyBackup() {
+  try {
+    const today = localNow(getScanSettings().timezone).date;
+    if (backupTriedOn === today || hasBackupFor(today)) return;
+    backupTriedOn = today;
+    createBackup(today);
+  } catch (err) {
+    console.error("[scheduler] daily backup failed:", err);
+  }
+}
+
 function tick() {
+  dailyBackup();
   try {
     const s = getScanSettings();
     if (!s.enabled) return;

@@ -77,4 +77,18 @@ export const MIGRATIONS: { version: string; sql: string }[] = [
       create index car_photos_car_idx on car_photos (car_id, position);
     `,
   },
+  // "Undo last change" (lib/undo.ts): each change's affected cars as they
+  // were before it, as a JSON snapshot of their rows.
+  {
+    version: "0006_undo_log",
+    sql: `
+      create table undo_log (
+        id text primary key,
+        label text not null,
+        car_ids text not null,
+        snapshot text not null,
+        created_at text not null default (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+      );
+    `,
+  },
 ];

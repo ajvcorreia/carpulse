@@ -4,6 +4,7 @@ import { useActionState, useEffect, useRef, useState, useTransition } from "reac
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  backupNowAction,
   runScanNowAction,
   saveEmailSettingsAction,
   savePhotoSettingsAction,
@@ -11,6 +12,7 @@ import {
   sendTestEmailAction,
   stopScanAction,
 } from "@/lib/settings-actions";
+import type { BackupFile } from "@/lib/backup";
 import type { ScanRunRow, ScanSummary } from "@/lib/scan";
 import type { EmailSettings, PhotoSettings, ScanSettings } from "@/lib/settings";
 import { formatPrice } from "@/lib/format";
@@ -400,6 +402,51 @@ function RunDetails({ summary }: { summary: ScanSummary }) {
       ))}
       {summary.emailSent ? <p className="text-xs text-text-muted">Summary emailed.</p> : null}
       {summary.emailError ? <p className="text-xs text-critical">Email failed: {summary.emailError}</p> : null}
+    </div>
+  );
+}
+
+function formatSize(bytes: number) {
+  return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+export function BackupsPanel({ backups, timezone }: { backups: BackupFile[]; timezone: string }) {
+  const router = useRouter();
+  const [result, setResult] = useState<Result>(null);
+  const [pending, startTransition] = useTransition();
+
+  function backUpNow() {
+    setResult(null);
+    startTransition(async () => {
+      setResult(await backupNowAction());
+      router.refresh();
+    });
+  }
+
+  return (
+    <div className="space-y-3 rounded-lg border border-border p-4">
+      {backups.length === 0 ? (
+        <p className="text-sm text-text-secondary">No backups yet — the first is made within a minute of starting.</p>
+      ) : (
+        <ul className="space-y-1 text-sm">
+          {backups.map((b) => (
+            <li key={b.name} className="flex flex-wrap items-center gap-x-3">
+              <a href={`/backups/${b.name}`} className="hover:underline">
+                {b.name}
+              </a>
+              <span className="text-xs text-text-muted">
+                {formatSize(b.size)} · saved {formatWhen(b.created_at, timezone)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex flex-wrap items-center gap-3">
+        <button type="button" onClick={backUpNow} disabled={pending} className={buttonClass}>
+          {pending ? "Backing up…" : "Back up now"}
+        </button>
+        <ResultLine result={result} />
+      </div>
     </div>
   );
 }

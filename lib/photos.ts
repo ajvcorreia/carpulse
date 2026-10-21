@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import { mkdir, readFile, rm, rmdir, writeFile } from "node:fs/promises";
 import { isIP } from "node:net";
 import { dirname, join } from "node:path";
@@ -152,6 +153,10 @@ export function getPhotoFiles(carId: string): string[] {
   return (getDb().prepare("select file from car_photos where car_id = ?").all(carId) as { file: string }[]).map(
     (r) => r.file
   );
+}
+
+export function photoFileExists(file: string) {
+  return existsSync(/* turbopackIgnore: true */ join(PHOTOS_DIR, file));
 }
 
 export async function deletePhotoFiles(files: string[]) {

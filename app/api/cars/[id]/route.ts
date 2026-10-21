@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { checkApiKey } from "@/lib/api-auth";
 import { getDb } from "@/lib/db/client";
+import { carLabel, withUndo } from "@/lib/undo";
 import { getCarWithPrices } from "@/lib/data";
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -70,7 +71,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const db = getDb();
 
   try {
-    const result = db.prepare(`update cars set ${setClause} where id = ?`).run(...values, id);
+    const result = withUndo(db, `Edited ${carLabel(db, id)}`, [id], () =>
+      db.prepare(`update cars set ${setClause} where id = ?`).run(...values, id)
+    );
     if (result.changes === 0) return NextResponse.json({ error: "Car not found." }, { status: 404 });
   } catch (err) {
     const isUnique = err instanceof Error && err.message.includes("UNIQUE constraint failed");

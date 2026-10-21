@@ -1,9 +1,10 @@
 import { z } from "zod";
+import { createBackup, listBackups } from "@/lib/backup";
 import { getDb } from "@/lib/db/client";
 import { sendEmail } from "@/lib/email";
 import { countCarsWithPhotos } from "@/lib/photos";
 import { getRecentScanRuns, isScanRunning, requestScanStop, startScan, type ScanSummary } from "@/lib/scan";
-import { currentSlot } from "@/lib/scheduler";
+import { currentSlot, localNow } from "@/lib/scheduler";
 import {
   getEmailSettings,
   getLastScheduledSlot,
@@ -140,6 +141,16 @@ export function stopScan(): SettingsResult {
   return { ok: true, message: "Stopping after the current car…" };
 }
 
+// "Back up now" — replaces today's backup if there already is one.
+export function backupNow(): SettingsResult {
+  try {
+    const backup = createBackup(localNow(getScanSettings().timezone).date);
+    return { ok: true, message: `Saved ${backup.name}.` };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Backup failed." };
+  }
+}
+
 // Everything the settings page shows, minus the SMTP password (only whether
 // one is saved).
 export function settingsOverview() {
@@ -155,6 +166,7 @@ export function settingsOverview() {
     total_cars: (db.prepare("select count(*) as n from cars").get() as { n: number }).n,
     // Struck-out cars are skipped by a scan.
     scanned_cars: (db.prepare("select count(*) as n from cars where is_struck_out = 0").get() as { n: number }).n,
+    backups: listBackups(),
   };
 }
 

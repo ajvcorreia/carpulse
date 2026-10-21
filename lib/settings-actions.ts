@@ -5,6 +5,7 @@ import {
   applyEmailSettings,
   applyPhotoSettings,
   applyScanSettings,
+  backupNow,
   emailSettingsSchema,
   formCheckbox,
   parseEmailSettings,
@@ -50,6 +51,12 @@ export async function savePhotoSettingsAction(_prev: unknown, formData: FormData
 export async function runScanNowAction(): Promise<SettingsResult> {
   const result = runScanNow();
   if (result.ok) revalidatePath("/settings");
+  return result;
+}
+
+export async function backupNowAction(): Promise<SettingsResult> {
+  const result = backupNow();
+  revalidatePath("/settings");
   return result;
 }
 

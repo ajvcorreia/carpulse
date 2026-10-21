@@ -1,5 +1,12 @@
 import Link from "next/link";
-import { EmailSettingsForm, PhotoSettingsForm, ScanRunsPanel, ScanSettingsForm } from "@/components/SettingsForms";
+import {
+  BackupsPanel,
+  EmailSettingsForm,
+  PhotoSettingsForm,
+  ScanRunsPanel,
+  ScanSettingsForm,
+} from "@/components/SettingsForms";
+import { listBackups } from "@/lib/backup";
 import { getDb } from "@/lib/db/client";
 import { countCarsWithPhotos } from "@/lib/photos";
 import { getRecentScanRuns, isScanRunning } from "@/lib/scan";
@@ -71,6 +78,17 @@ export default async function SettingsPage() {
           </p>
         </div>
         <EmailSettingsForm settings={email} hasPassword={smtpPassword !== ""} />
+      </section>
+
+      <section className="space-y-3">
+        <div className="space-y-1">
+          <h2 className="font-medium">Backups</h2>
+          <p className="text-sm text-text-secondary">
+            A copy of the database is saved every day (in data/backups, next to it), and the last 14 are kept. Click
+            one to download it. Listing photos aren&apos;t included — they stay in data/photos.
+          </p>
+        </div>
+        <BackupsPanel backups={listBackups()} timezone={scan.timezone} />
       </section>
     </div>
   );

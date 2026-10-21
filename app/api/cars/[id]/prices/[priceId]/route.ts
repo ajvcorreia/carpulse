@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { checkApiKey } from "@/lib/api-auth";
 import { getDb } from "@/lib/db/client";
+import { carLabel, withUndo } from "@/lib/undo";
 
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string; priceId: string }> }) {
   const authError = checkApiKey(req);
@@ -15,7 +16,9 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
 
   if (!deleted) return NextResponse.json({ error: "Price entry not found." }, { status: 404 });
 
-  db.prepare("delete from price_history where id = ?").run(priceId);
+  withUndo(db, `Deleted a price from ${carLabel(db, id)}`, [id], () =>
+    db.prepare("delete from price_history where id = ?").run(priceId)
+  );
 
   revalidatePath("/");
 

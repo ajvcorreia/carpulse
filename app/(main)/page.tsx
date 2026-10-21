@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { CarsTable } from "@/components/CarsTable";
+import { UndoBar } from "@/components/UndoBar";
 import { getCarsWithPrices, getCarFieldOptions } from "@/lib/data";
+import { getLastUndo } from "@/lib/undo";
 
 export default async function DashboardPage({
   searchParams,
@@ -45,6 +47,7 @@ export default async function DashboardPage({
             Check
           </button>
         </form>
+        <UndoBar last={getLastUndo()} />
       </div>
 
       <CarsTable cars={cars} options={options} highlightId={highlight} />
