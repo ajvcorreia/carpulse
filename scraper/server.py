@@ -43,6 +43,12 @@ from details import best_srcset, extract_details, extract_images, is_index_page,
 
 PORT = int(os.environ.get("PORT", "8000"))
 FETCH_TIMEOUT_MS = int(os.environ.get("FETCH_TIMEOUT_MS", "60000"))
+# The browser's timezone and language should match where its IP is. Imperva
+# (dubizzle) hard-blocks a UAE IP whose browser reports the container's UTC
+# and en-US — "Request unsuccessful" on every listing — and lets the same
+# browser through once these agree.
+BROWSER_TIMEZONE = os.environ.get("BROWSER_TIMEZONE", "Asia/Dubai")
+BROWSER_LOCALE = os.environ.get("BROWSER_LOCALE", "en-AE")
 
 fetch_lock = threading.Lock()
 
@@ -183,6 +189,8 @@ def scrape(url, with_details=False, progress=None):
             network_idle=True,
             wait=8000,
             google_search=False,
+            timezone_id=BROWSER_TIMEZONE,
+            locale=BROWSER_LOCALE,
             timeout=FETCH_TIMEOUT_MS,
             page_action=loaded if progress else None,
         )
