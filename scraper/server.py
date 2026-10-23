@@ -34,6 +34,7 @@ gets clicked by hand, and keeps memory use predictable.
 import json
 import os
 import re
+import shutil
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -43,12 +44,23 @@ from details import best_srcset, extract_details, extract_images, is_index_page,
 
 PORT = int(os.environ.get("PORT", "8000"))
 FETCH_TIMEOUT_MS = int(os.environ.get("FETCH_TIMEOUT_MS", "60000"))
-# The browser's timezone and language should match where its IP is. Imperva
-# (dubizzle) hard-blocks a UAE IP whose browser reports the container's UTC
-# and en-US — "Request unsuccessful" on every listing — and lets the same
-# browser through once these agree.
+# Imperva (dubizzle) goes by the browser's fingerprint, not the IP: one that
+# solves its challenge from scratch on every check — a new browser each time,
+# no cookies — gets hard-blocked ("Request unsuccessful") within a dozen or so
+# checks, and stays blocked for a day or more, while a slightly different
+# browser on the same IP sails through. So the browser keeps a profile
+# (Imperva's cookie included) between fetches, like a returning visitor, and
+# if it's blocked anyway it moves on to a fresh identity — the next language
+# below, with a new profile — and tries once more (see fetch_page).
 BROWSER_TIMEZONE = os.environ.get("BROWSER_TIMEZONE", "Asia/Dubai")
-BROWSER_LOCALE = os.environ.get("BROWSER_LOCALE", "en-AE")
+BROWSER_LOCALES = [
+    loc.strip()
+    for loc in os.environ.get("BROWSER_LOCALES", "en-GB,en-IN,ar-AE,en-AU,en-CA,en-NZ,en-ZA,en-AE,en-US").split(",")
+    if loc.strip()
+]
+# On a volume, so the profile and the identity in use survive a redeploy.
+PROFILE_ROOT = os.environ.get("PROFILE_DIR", "/data/browser")
+IDENTITY_FILE = os.path.join(PROFILE_ROOT, "identity")
 
 fetch_lock = threading.Lock()
 
@@ -159,6 +171,44 @@ def html_image_urls(page):
 SOURCE_NAMES = {"json-ld": "structured data", "meta": "page tags", "text": "page text"}
 
 
+def current_locale():
+    """The browser identity in use — the language it reports, which also
+    names its profile directory."""
+    try:
+        with open(IDENTITY_FILE, encoding="utf-8") as f:
+            locale = f.read().strip()
+        if locale in BROWSER_LOCALES:
+            return locale
+    except OSError:
+        pass
+    return BROWSER_LOCALES[0]
+
+
+def next_identity(locale):
+    """Moves on from a blocked identity to the next one, with a clean profile."""
+    i = BROWSER_LOCALES.index(locale) if locale in BROWSER_LOCALES else -1
+    fresh = BROWSER_LOCALES[(i + 1) % len(BROWSER_LOCALES)]
+    shutil.rmtree(os.path.join(PROFILE_ROOT, fresh), ignore_errors=True)
+    os.makedirs(PROFILE_ROOT, exist_ok=True)
+    with open(IDENTITY_FILE, "w", encoding="utf-8") as f:
+        f.write(fresh)
+    return fresh
+
+
+def read_page(page):
+    """(status, title, html, blocked) — `blocked` when bot protection served its
+    own page in place of the listing."""
+    status = getattr(page, "status", None)
+    title = (page.css("title::text").get() or "").strip() or None
+    html = (page.body or b"").decode(getattr(page, "encoding", None) or "utf-8", errors="replace")
+    blocked = (bool(title) and title.lower().startswith(BLOCK_TITLES)) or (
+        # Block pages are tiny; a real listing that merely mentions one of
+        # these strings is not.
+        len(html) < 20000 and bool(BLOCK_BODY_RE.search(html))
+    )
+    return status, title, html, blocked
+
+
 def scrape(url, with_details=False, progress=None):
     """`progress(step, state, detail=None)`, when given, is told as each step
     starts and ends — what the live scan page shows. Steps: queue, load,
@@ -179,37 +229,42 @@ def scrape(url, with_details=False, progress=None):
     step("queue", "start")
     with fetch_lock:
         step("queue", "done")
-        step("load", "start")
-        # The `wait` is what gets past dubizzle's Imperva check: its
-        # interstitial runs a JS challenge and then reloads into the real
-        # listing, which takes a few seconds after the network first idles.
-        page = StealthyFetcher.fetch(
-            url,
-            headless=True,
-            network_idle=True,
-            wait=8000,
-            google_search=False,
-            timezone_id=BROWSER_TIMEZONE,
-            locale=BROWSER_LOCALE,
-            timeout=FETCH_TIMEOUT_MS,
-            page_action=loaded if progress else None,
-        )
-    step("settle", "done")
+        for attempt in (1, 2):
+            locale = current_locale()
+            step("load", "start")
+            # The `wait` is what gets past dubizzle's Imperva check: its
+            # interstitial runs a JS challenge and then reloads into the real
+            # listing, which takes a few seconds after the network first idles.
+            page = StealthyFetcher.fetch(
+                url,
+                headless=True,
+                network_idle=True,
+                wait=8000,
+                google_search=False,
+                timezone_id=BROWSER_TIMEZONE,
+                locale=locale,
+                user_data_dir=os.path.join(PROFILE_ROOT, locale),
+                timeout=FETCH_TIMEOUT_MS,
+                page_action=loaded if progress else None,
+            )
+            step("settle", "done")
 
-    step("blocked", "start")
-    status = getattr(page, "status", None)
-    title = (page.css("title::text").get() or "").strip() or None
-    html = (page.body or b"").decode(getattr(page, "encoding", None) or "utf-8", errors="replace")
-    blocked = (bool(title) and title.lower().startswith(BLOCK_TITLES)) or (
-        # Block pages are tiny; a real listing that merely mentions one of
-        # these strings is not.
-        len(html) < 20000 and bool(BLOCK_BODY_RE.search(html))
-    )
+            step("blocked", "start")
+            status, title, html, blocked = read_page(page)
+            if not blocked:
+                break
+            # This identity is burned — the next fetch (this retry, or the
+            # next check) goes out as a fresh one.
+            fresh = next_identity(locale)
+            if attempt == 1:
+                step("blocked", "failed", f"Blocked as {locale} — retrying as {fresh}")
+
     result = {"status": status, "title": title, "price": None, "currency": None, "source": None, "blocked": blocked}
     if blocked:
         step("blocked", "failed", "Bot protection served a block page")
         return result
-    step("blocked", "done", f"HTTP {status}" if status else None)
+    retried = " · after a retry" if attempt == 2 else ""
+    step("blocked", "done", f"HTTP {status}{retried}" if status else None)
 
     step("price", "start")
     # Landed on a search/category page instead of the listing — what some

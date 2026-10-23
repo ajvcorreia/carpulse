@@ -30,7 +30,12 @@ services:
     # ports:
     #   - "127.0.0.1:8765:8000"
     shm_size: 1gb # Chromium crashes on Docker's default 64MB /dev/shm
+    volumes:
+      # The browser's profile (cookies), kept between fetches and deploys —
+      # see PROFILE_DIR in scraper/server.py.
+      - scraper-data:/data
     restart: unless-stopped
 
 volumes:
   carpulse-data:
+  scraper-data:
