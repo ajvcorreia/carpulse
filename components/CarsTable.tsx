@@ -18,6 +18,7 @@ import { LinkBanner } from "@/components/LinkBanner";
 import { markCarOpened, setCarRemovedFlag, setCarStruckOut, unlinkCar } from "@/lib/actions";
 import { daysListed, formatDMY, formatPrice, siteLabel, totalDelta } from "@/lib/format";
 import { claudeInsightsUrl } from "@/lib/claude";
+import { relistSearchUrl } from "@/lib/relist-search";
 import { groupMembers } from "@/lib/groups";
 import type { CarWithPrices, PricePoint } from "@/lib/types";
 
@@ -1094,6 +1095,17 @@ export function CarsTable({
                           >
                             Open listing{isDesktop ? " ↗" : ""}
                           </a>
+                          {car.is_removed ? (
+                            <a
+                              href={relistSearchUrl(car)}
+                              target={isDesktop ? "_blank" : undefined}
+                              rel={isDesktop ? "noreferrer" : undefined}
+                              title={`Search ${siteLabel(car.url)} for the same ${car.year} ${car.make} ${car.model} — it may have been relisted as a new ad`}
+                              className={`${actionButtonClass} text-series-1`}
+                            >
+                              Search for relisting{isDesktop ? " ↗" : ""}
+                            </a>
+                          ) : null}
                           <CheckListingButton carId={car.id} className={actionButtonClass} />
                           <a
                             href={claudeInsightsUrl(car, latest ? formatPrice(latest.price, latest.currency) : null)}
