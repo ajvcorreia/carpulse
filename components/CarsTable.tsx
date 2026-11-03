@@ -15,7 +15,7 @@ import { PhotoCarousel } from "@/components/PhotoCarousel";
 import { EditCarForm } from "@/components/EditCarForm";
 import { MergeBanner } from "@/components/MergeBanner";
 import { LinkBanner } from "@/components/LinkBanner";
-import { markCarOpened, setCarRemovedFlag, setCarStruckOut, unlinkCar } from "@/lib/actions";
+import { markCarOpened, setCarMainPhoto, setCarRemovedFlag, setCarStruckOut, unlinkCar } from "@/lib/actions";
 import { daysListed, formatDMY, formatPrice, siteLabel, totalDelta } from "@/lib/format";
 import { claudeInsightsUrl } from "@/lib/claude";
 import { relistSearchUrl } from "@/lib/relist-search";
@@ -1283,7 +1283,11 @@ export function CarsTable({
                           <div className="grid grid-cols-1 items-center gap-4 md:grid-cols-2">
                             {/* min-w-0: let the chart's ResponsiveContainer shrink to its column. */}
                             <div className="min-w-0">
-                              <PhotoCarousel photos={car.photos} label={`${car.year} ${car.make} ${car.model}`} />
+                              <PhotoCarousel
+                                photos={car.photos}
+                                label={`${car.year} ${car.make} ${car.model}`}
+                                onSetMain={async (i) => (await setCarMainPhoto(car.id, car.photos[i].id)).error}
+                              />
                             </div>
                             <div className="min-w-0">
                               <PriceChart points={points} />

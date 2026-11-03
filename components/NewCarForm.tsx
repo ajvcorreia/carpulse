@@ -493,6 +493,11 @@ export function NewCarForm({ url, options }: { url: string; options: FieldOption
             urls={photoUrls}
             label={[make, model].filter(Boolean).join(" ") || "Listing"}
             imageHeight={photoHeight ?? undefined}
+            // Saved in this order, so first here is first on the car.
+            onSetMain={(i) => {
+              setPhotoUrls((prev) => [prev[i], ...prev.filter((_, j) => j !== i)]);
+              return undefined;
+            }}
           />
         </div>
       ) : null}

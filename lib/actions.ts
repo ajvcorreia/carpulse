@@ -19,6 +19,7 @@ import {
   type ListingCheckResult,
   type ListingDetailsResult,
 } from "@/lib/car-service";
+import { setMainPhoto } from "@/lib/photos";
 import { carLabel, undoLastChange, withUndo } from "@/lib/undo";
 
 // Thin FormData wrappers over lib/car-service.ts, which holds the actual
@@ -240,6 +241,19 @@ export async function setCarRemovedFlag(carId: string, removed: boolean) {
     db.prepare("update cars set is_removed = ? where id = ?").run(removed ? 1 : 0, carId)
   );
   revalidatePath("/");
+}
+
+// From the photo carousel on a dashboard card. Undoable like other edits.
+export async function setCarMainPhoto(carId: string, photoId: string): Promise<{ error?: string }> {
+  if (!carId || !photoId) return { error: "No photo given." };
+  const db = getDb();
+  try {
+    withUndo(db, `Changed the main photo of ${carLabel(db, carId)}`, [carId], () => setMainPhoto(carId, photoId));
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Couldn't change the main photo." };
+  }
+  revalidatePath("/");
+  return {};
 }
 
 // Plain args, not FormData, and no redirect — called directly from a client

@@ -29,6 +29,20 @@ const EXTENSIONS: Record<string, string> = {
   "image/gif": "gif",
 };
 
+// Makes one photo the car's main one — first in its order, which is what
+// the carousel opens on — keeping the rest in their order after it. Run it
+// inside a transaction (withUndo's, in lib/actions.ts): it rewrites every
+// position.
+export function setMainPhoto(carId: string, photoId: string) {
+  const db = getDb();
+  const ids = (
+    db.prepare("select id from car_photos where car_id = ? order by position asc").all(carId) as { id: string }[]
+  ).map((r) => r.id);
+  if (!ids.includes(photoId)) throw new Error("That photo isn't this car's.");
+  const update = db.prepare("update car_photos set position = ? where id = ?");
+  [photoId, ...ids.filter((id) => id !== photoId)].forEach((id, position) => update.run(position, id));
+}
+
 export function carHasPhotos(carId: string) {
   return getDb().prepare("select 1 from car_photos where car_id = ? limit 1").get(carId) != null;
 }
