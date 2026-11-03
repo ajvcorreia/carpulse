@@ -1,17 +1,19 @@
 """Site-agnostic extraction of a car listing's details.
 
-Nothing here knows about any particular site. Three layers, most to least
+Nothing here knows about any particular site. Four layers, most to least
 trustworthy, each only filling fields the layers before it left empty:
 
 1. schema.org Vehicle/Car/Product JSON-LD — the standard listing sites embed
    for search engines (brand, model, vehicleModelDate, mileageFromOdometer,
    color, vehicleInteriorColor, offers...).
-2. Label/value spec pairs, matched by the *label text* ("Regional Specs",
+2. The page's app state (window.__X__ = {...}): the object with make,
+   model and year keys — see from_app_state.
+3. Label/value spec pairs, matched by the *label text* ("Regional Specs",
    "No. of Cylinders", "Exterior Colour"...) wherever they appear: as
    {"label": ..., "value": ...}-shaped objects in any JSON the page embeds
    (Next.js/Nuxt state, application/json scripts), or as a label element
    followed by a value element in the HTML (dt/dd, th/td, div/span pairs).
-3. Regexes over the title + description ("GCC Specs", "2,500 km") as a last
+4. Regexes over the title + description ("GCC Specs", "2,500 km") as a last
    resort.
 
 Pure functions over strings — no fetching — so this can be tested on its own.
@@ -203,11 +205,27 @@ def walk_single(node):
             yield from walk_single(v)
 
 
+def walk_past_breadcrumbs(node):
+    """Like walk(), but skips BreadcrumbLists — their ListItems are links up
+    the site ("Home › Used BMW cars"), not a list of other cars."""
+    if isinstance(node, dict):
+        if "breadcrumblist" in type_names(node):
+            return
+        yield node
+        for v in node.values():
+            yield from walk_past_breadcrumbs(v)
+    elif isinstance(node, list):
+        for v in node:
+            yield from walk_past_breadcrumbs(v)
+
+
 def is_index_page(ld_docs):
     """A search/category page rather than one listing: it carries a list of
     cars and no car of its own. Some sites (DubiCars) redirect a removed ad to
-    exactly such a page, with a 200, so its prices belong to other cars."""
-    has_list = any(type_names(o) & LIST_TYPES for d in ld_docs for o in walk(d))
+    exactly such a page, with a 200, so its prices belong to other cars.
+    A breadcrumb trail doesn't count — Cars24 listings carry one and nothing
+    else."""
+    has_list = any(type_names(o) & LIST_TYPES for d in ld_docs for o in walk_past_breadcrumbs(d))
     has_single = any(type_names(o) & VEHICLE_TYPES for d in ld_docs for o in walk_single(d))
     return has_list and not has_single
 
@@ -292,6 +310,73 @@ def from_json_pairs(docs):
     return found
 
 
+# --- The page's own app state ---------------------------------------------
+#
+# Sites that skip schema.org often still ship the listing to the browser as
+# JSON — `window.__PRELOADED_STATE__ = {...}` (Cars24), __NEXT_DATA__... — as
+# a plain object with make/model/year keys. The same state usually holds
+# other cars too ("similar cars"), so the listing is taken to be the
+# shallowest object with all three, and if two different cars tie for that,
+# neither: a search page's state is a list of cars, none of them the one.
+
+APP_STATE_RE = re.compile(r"^\s*window\.__[A-Za-z0-9_]+__\s*=\s*(\{.*\})\s*;?\s*$", re.DOTALL)
+OTHER_CARS_KEY_RE = re.compile(r"similar|related|recommend|recent|suggest|compare|wishlist|other|more", re.IGNORECASE)
+STATE_KEYS = {
+    "make": ("make", "makeName", "brand", "brandName", "manufacturer"),
+    "model": ("model", "modelName"),
+    "year": ("year", "modelYear", "manufacturingYear", "yearOfManufacture"),
+    "km": ("odometerReading", "odometer", "mileage", "kilometers", "kilometres", "km", "kms"),
+    "cylinders": ("cylinders", "noOfCylinders", "numberOfCylinders", "engineCylinders"),
+    "spec": ("regionalSpecs", "regionalSpec", "specs"),
+    "exterior_color": ("exteriorColor", "exteriorColour", "color", "colour", "bodyColor"),
+    "interior_color": ("interiorColor", "interiorColour"),
+}
+
+
+def app_state_blobs(scripts):
+    """The JSON assigned to `window.__X__` in inline scripts."""
+    return [m.group(1) for s in scripts if s and (m := APP_STATE_RE.match(s))]
+
+
+def state_value(obj, field):
+    for key in STATE_KEYS[field]:
+        value = obj.get(key)
+        if isinstance(value, (str, int, float)) and not isinstance(value, bool):
+            return value
+    return None
+
+
+def from_app_state(docs):
+    best_depth, cars = None, []
+
+    def visit(node, depth):
+        nonlocal best_depth, cars
+        if isinstance(node, dict):
+            if all(state_value(node, f) is not None for f in ("make", "model", "year")):
+                if best_depth is None or depth < best_depth:
+                    best_depth, cars = depth, [node]
+                elif depth == best_depth:
+                    cars.append(node)
+            for k, v in node.items():
+                if not OTHER_CARS_KEY_RE.search(str(k)):
+                    visit(v, depth + 1)
+        elif isinstance(node, list):
+            for v in node:
+                visit(v, depth + 1)
+
+    for doc in docs:
+        visit(doc, 0)
+    found = {}
+    if not cars or len({tuple(str(state_value(c, f)) for f in ("make", "model", "year")) for c in cars}) > 1:
+        return found
+    for field in STATE_KEYS:
+        raw = state_value(cars[0], field)
+        value = CONVERTERS[field](raw) if raw is not None else None
+        if value is not None:
+            found[field] = value
+    return found
+
+
 TAG_RE = re.compile(r"<[^>]+>")
 
 
@@ -346,13 +431,16 @@ def from_text(text):
 
 
 def extract_details(ld_blobs, json_blobs, html, title="", description=""):
-    """Returns ({field: value}, {field: layer}) for whatever could be found."""
+    """Returns ({field: value}, {field: layer}) for whatever could be found.
+    `json_blobs` is the page's embedded JSON — application/json scripts and
+    app_state_blobs()."""
     # A search page's spec tables and text describe many cars, none of them
     # this one — better to fill nothing than another car's details.
     if is_index_page(parse_json_blobs(ld_blobs)):
         return {}, {}
     layers = (
         ("structured data", lambda: from_json_ld(parse_json_blobs(ld_blobs))),
+        ("listing data", lambda: from_app_state(parse_json_blobs(json_blobs))),
         ("spec table", lambda: from_json_pairs(parse_json_blobs(json_blobs))),
         ("spec table", lambda: from_html_pairs(html)),
         ("page text", lambda: from_text(f"{title or ''}\n{description or ''}")),

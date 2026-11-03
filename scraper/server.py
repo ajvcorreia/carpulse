@@ -40,7 +40,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from scrapling.fetchers import StealthyFetcher
 
-from details import best_srcset, extract_details, extract_images, is_index_page, parse_json_blobs, walk_single
+from details import app_state_blobs, best_srcset, extract_details, extract_images, is_index_page, parse_json_blobs, walk_single
 
 PORT = int(os.environ.get("PORT", "8000"))
 FETCH_TIMEOUT_MS = int(os.environ.get("FETCH_TIMEOUT_MS", "60000"))
@@ -320,7 +320,8 @@ def scrape(url, with_details=False, progress=None):
         ).get()
         result["details"], result["detail_sources"] = extract_details(
             page.css('script[type="application/ld+json"]::text').getall(),
-            page.css('script[type="application/json"]::text').getall(),
+            page.css('script[type="application/json"]::text').getall()
+            + app_state_blobs(page.css("script:not([src])::text").getall()),
             html,
             title or "",
             description or "",
