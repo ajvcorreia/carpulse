@@ -305,7 +305,8 @@ def scrape(url, with_details=False, progress=None):
     try:
         result["images"] = extract_images(
             page.css('script[type="application/ld+json"]::text').getall(),
-            page.css('script[type="application/json"]::text').getall(),
+            page.css('script[type="application/json"]::text').getall()
+            + app_state_blobs(page.css("script:not([src])::text").getall()),
             html_image_urls(page),
             page.css('meta[property="og:image"]::attr(content)').getall(),
             base=getattr(page, "url", None) or url,

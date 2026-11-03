@@ -497,15 +497,20 @@ def extract_details(ld_blobs, json_blobs, html, title="", description=""):
 # 1. JSON-LD that already lists several images (the whole gallery).
 # 2. An array in the page's embedded JSON (Next.js/Nuxt state...) holding
 #    the anchor among other image URLs — e.g. a listing's `photos` field.
+#    Bare paths ("cdn-bucket/1234/a.jpg", Cars24) resolve against the
+#    anchor's host — page-relative image paths don't occur in such JSON.
 # 3. <img>/<source>/<a> URLs in the HTML shaped like the anchor's: same host
-#    and path pattern, differing only in the per-photo id segments.
+#    and path pattern, differing only in the per-photo id segments — and,
+#    when at least two share them, the anchor's own id *folders*: a site
+#    that files photos by car id (/9718448765/IMG_1.jpg) has its "similar
+#    cars" strip in the same shape, just under other ids.
 # 4. Failing all that, just the anchors themselves.
 
 MAX_PHOTOS = 40
 IMAGE_EXT_RE = re.compile(r"\.(?:jpe?g|png|webp|avif)$", re.IGNORECASE)
 ID_SEGMENT_RE = re.compile(r"^[0-9a-f-]{6,}$", re.IGNORECASE)
 # Keys an image object in embedded JSON uses for its full-size URL, best first.
-IMAGE_VALUE_KEYS = ("main", "large", "full", "original", "big", "xl", "url", "src", "href", "contentUrl", "uri")
+IMAGE_VALUE_KEYS = ("main", "large", "full", "original", "big", "xl", "url", "src", "href", "contentUrl", "uri", "path")
 
 
 def absolute_url(url, base):
@@ -585,24 +590,26 @@ def ld_images(ld_docs, base):
     return dedupe(found)
 
 
-def image_from_item(item, anchor_keys, base):
-    """An image URL out of one array element (a string or an image object)."""
+def image_from_item(item, anchor_keys, base, asset_base=None):
+    """An image URL out of one array element (a string or an image object).
+    `asset_base` (the anchor's origin) resolves bare paths."""
     if isinstance(item, str):
-        url = absolute_url(item, base)
+        bare = asset_base and not re.match(r"^(?:[a-z][a-z0-9+.-]*:|/)", item.strip(), re.IGNORECASE)
+        url = absolute_url(item, asset_base + "/" if bare else base)
         return url if url and (has_image_ext(url) or image_key(url) in anchor_keys) else None
     if isinstance(item, dict):
         for k in IMAGE_VALUE_KEYS:
-            url = image_from_item(item.get(k), anchor_keys, base) if isinstance(item.get(k), str) else None
+            url = image_from_item(item.get(k), anchor_keys, base, asset_base) if isinstance(item.get(k), str) else None
             if url:
                 return url
         for v in item.values():
-            url = image_from_item(v, anchor_keys, base) if isinstance(v, str) else None
+            url = image_from_item(v, anchor_keys, base, asset_base) if isinstance(v, str) else None
             if url:
                 return url
     return None
 
 
-def json_gallery(json_docs, anchor_keys, base):
+def json_gallery(json_docs, anchor_keys, base, asset_base=None):
     best = []
 
     def visit(node):
@@ -611,7 +618,7 @@ def json_gallery(json_docs, anchor_keys, base):
             for v in node.values():
                 visit(v)
         elif isinstance(node, list):
-            urls = [u for u in (image_from_item(x, anchor_keys, base) for x in node) if u]
+            urls = [u for u in (image_from_item(x, anchor_keys, base, asset_base) for x in node) if u]
             if len(urls) >= 2 and any(image_key(u) in anchor_keys for u in urls):
                 urls = dedupe(urls)
                 if len(urls) > len(best):
@@ -637,6 +644,11 @@ def best_srcset(value):
     return best
 
 
+def id_folders(url):
+    _, segments = split_url(url)
+    return tuple(s.lower() for s in segments[:-1] if ID_SEGMENT_RE.match(s))
+
+
 def html_gallery(html_urls, anchor_keys, base):
     urls = [u for u in (absolute_url(x, base) for x in html_urls) if u]
     shapes = {image_shape(u) for u in urls if image_key(u) in anchor_keys}
@@ -644,6 +656,10 @@ def html_gallery(html_urls, anchor_keys, base):
     best_size = -1
     for shape in shapes:
         members = dedupe([u for u in urls if image_shape(u) == shape])
+        folders = {id_folders(u) for u in members if image_key(u) in anchor_keys}
+        same_car = [u for u in members if id_folders(u) in folders]
+        if len(same_car) >= 2:
+            members = same_car
         size = shape_size(shape)
         if len(members) > len(best) or (len(members) == len(best) and size > best_size):
             best, best_size = members, size
@@ -662,8 +678,9 @@ def extract_images(ld_blobs, json_blobs, html_urls, og_urls, base=None):
     if not anchors:
         return []
     anchor_keys = {image_key(u) for u in anchors}
+    host = re.match(r"^https?://[^/]+", anchors[0])
     for gallery in (
-        lambda: json_gallery(parse_json_blobs(json_blobs), anchor_keys, base),
+        lambda: json_gallery(parse_json_blobs(json_blobs), anchor_keys, base, host.group(0) if host else None),
         lambda: html_gallery(html_urls, anchor_keys, base),
     ):
         try:
