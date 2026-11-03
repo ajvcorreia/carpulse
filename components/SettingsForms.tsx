@@ -370,6 +370,10 @@ function RunDetails({ summary }: { summary: ScanSummary }) {
       items: summary.removed.map((c) => ({ key: c.id, href: carHref(c.id), text: c.label })),
     },
     {
+      title: "Struck out — removed for over 30 days",
+      items: (summary.struckOut ?? []).map((c) => ({ key: c.id, href: carHref(c.id), text: c.label })),
+    },
+    {
       title: "Couldn't check",
       items: summary.problems.map((p, i) => ({
         key: `${p.id}-${i}`,
@@ -499,7 +503,7 @@ export function ScanRunsPanel({ runs, running, timezone }: { runs: ScanRunRow[];
           {runs.map((r) => {
             const summary: ScanSummary | null = r.summary ? JSON.parse(r.summary) : null;
             const counts = summary
-              ? `${summary.priceChanges.length} price changes · ${summary.reactivated.length} back on sale · ${summary.removed.length} removed · ${summary.problems.length} couldn't check`
+              ? `${summary.priceChanges.length} price changes · ${summary.reactivated.length} back on sale · ${summary.removed.length} removed${summary.struckOut?.length ? ` · ${summary.struckOut.length} struck out` : ""} · ${summary.problems.length} couldn't check`
               : "";
             return (
               <li key={r.id} className="py-2">

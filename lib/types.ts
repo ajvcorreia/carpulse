@@ -12,6 +12,8 @@ export type Car = {
   ad_placed_at: string | null;
   created_at: string;
   is_removed: boolean;
+  // When it was marked removed — kept by triggers (lib/db/migrations.ts).
+  removed_at: string | null;
   is_favorite: boolean;
   is_struck_out: boolean;
   strike_out_reason: string | null;

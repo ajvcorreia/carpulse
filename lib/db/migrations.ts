@@ -91,4 +91,39 @@ export const MIGRATIONS: { version: string; sql: string }[] = [
       );
     `,
   },
+  // When a car was marked removed, so a scheduled scan can strike out cars
+  // that have stayed removed too long (lib/scan.ts). Kept by triggers rather
+  // than by each place that flips is_removed — scans, the card's button, the
+  // API, relists, imports, undo — so none can forget it.
+  //
+  // Cars already removed get the start of the scan that marked them removed
+  // (the latest, if more than one did), else now: removed by hand, or before
+  // scans kept summaries — their 30 days start today.
+  {
+    version: "0007_removed_at",
+    sql: `
+      alter table cars add column removed_at text;
+
+      update cars set removed_at = coalesce(
+        (select max(r.started_at) from scan_runs r, json_each(r.summary, '$.removed') j
+         where json_valid(r.summary) and json_extract(j.value, '$.id') = cars.id),
+        strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      )
+      where is_removed = 1;
+
+      create trigger cars_removed_at_update after update of is_removed on cars
+      when new.is_removed is not old.is_removed
+      begin
+        update cars set removed_at = case when new.is_removed = 1
+          then strftime('%Y-%m-%dT%H:%M:%fZ', 'now') else null end
+        where id = new.id;
+      end;
+
+      create trigger cars_removed_at_insert after insert on cars
+      when new.is_removed = 1 and new.removed_at is null
+      begin
+        update cars set removed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') where id = new.id;
+      end;
+    `,
+  },
 ];

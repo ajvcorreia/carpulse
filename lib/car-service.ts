@@ -589,6 +589,7 @@ export async function buildExport() {
       created_at: c.created_at,
       is_favorite: c.is_favorite,
       is_removed: c.is_removed,
+      removed_at: c.removed_at,
       is_struck_out: c.is_struck_out,
       strike_out_reason: c.strike_out_reason,
       price_history: c.price_history.map((p) => ({
@@ -635,6 +636,7 @@ const importCarSchema = z.object({
   created_at: z.string().optional(),
   is_favorite: z.boolean().optional(),
   is_removed: z.boolean().optional(),
+  removed_at: z.string().nullable().optional(),
   is_struck_out: z.boolean().optional(),
   strike_out_reason: z.string().nullable().optional(),
   price_history: z.array(importPriceSchema).default([]),
@@ -662,10 +664,12 @@ export function importCars(json: unknown): ServiceResult<{ summary: string }> {
   const findByUrl = db.prepare("select id from cars where url = ?");
   // created_at: coalesce falls back to the table's default (now) when the
   // import entry doesn't specify one, same as omitting the column would.
+  // removed_at likewise: a removed car from an older export gets now, from
+  // the cars_removed_at_insert trigger.
   const insertCar = db.prepare(
     `insert into cars (id, url, make, model, year, km, cylinders, spec, exterior_color, interior_color,
-     ad_placed_at, is_favorite, is_removed, is_struck_out, strike_out_reason, created_at)
-     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, coalesce(?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')))`
+     ad_placed_at, is_favorite, is_removed, removed_at, is_struck_out, strike_out_reason, created_at)
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, coalesce(?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')))`
   );
   const existingPricesStmt = db.prepare("select price, recorded_at from price_history where car_id = ?");
   const insertPrice = db.prepare(
@@ -699,6 +703,7 @@ export function importCars(json: unknown): ServiceResult<{ summary: string }> {
           entry.ad_placed_at ?? null,
           entry.is_favorite ? 1 : 0,
           entry.is_removed ? 1 : 0,
+          entry.is_removed ? (entry.removed_at ?? null) : null,
           entry.is_struck_out ? 1 : 0,
           entry.is_struck_out ? (entry.strike_out_reason ?? null) : null,
           entry.created_at ?? null

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { getDb } from "@/lib/db/client";
+import { getDb, withTransaction } from "@/lib/db/client";
 import { sendEmail } from "@/lib/email";
 import { formatPrice } from "@/lib/format";
 import { carHasPhotos, grabPhotosIfMissing } from "@/lib/photos";
@@ -24,6 +24,9 @@ export type ScanSummary = {
   priceChanges: (CarRef & { previous: number | null; price: number; currency: string })[];
   removed: CarRef[];
   reactivated: CarRef[];
+  // Struck out before a scheduled scan for staying removed too long (see
+  // strikeOutLongRemoved). Absent from summaries saved before it existed.
+  struckOut?: CarRef[];
   // Checked, but nothing could be concluded (blocked, no price found…).
   problems: (CarRef & { message: string })[];
   emailSent?: boolean;
@@ -156,11 +159,11 @@ export function markInterruptedRuns() {
 }
 
 function emptySummary(): ScanSummary {
-  return { priceChanges: [], removed: [], reactivated: [], problems: [] };
+  return { priceChanges: [], removed: [], reactivated: [], struckOut: [], problems: [] };
 }
 
 export function hasChanges(s: ScanSummary) {
-  return s.priceChanges.length + s.removed.length + s.reactivated.length > 0;
+  return s.priceChanges.length + s.removed.length + s.reactivated.length + (s.struckOut?.length ?? 0) > 0;
 }
 
 type CarRow = {
@@ -174,6 +177,30 @@ type CarRow = {
 
 function carRef(car: CarRow): CarRef {
   return { id: car.id, url: car.url, label: `${car.year} ${car.make} ${car.model}` };
+}
+
+export const STRIKE_OUT_AFTER_DAYS = 30;
+
+// Scheduled scans only: a car whose ad has been gone for over a month is as
+// good as sold, so it's struck out — hidden like any struck-out car and no
+// longer checked, which is one less request to the site every scan. "Remove
+// strike-out" on its card brings it back. removed_at is kept by triggers
+// (lib/db/migrations.ts, 0007_removed_at).
+function strikeOutLongRemoved(db: ReturnType<typeof getDb>, summary: ScanSummary) {
+  const cutoff = new Date(Date.now() - STRIKE_OUT_AFTER_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  const reason = `Removed for over ${STRIKE_OUT_AFTER_DAYS} days`;
+  withTransaction(db, () => {
+    const cars = db
+      .prepare(
+        "select id, url, make, model, year, is_removed from cars where is_removed = 1 and is_struck_out = 0 and removed_at < ?"
+      )
+      .all(cutoff) as CarRow[];
+    const strike = db.prepare("update cars set is_struck_out = 1, strike_out_reason = ? where id = ?");
+    for (const car of cars) {
+      strike.run(reason, car.id);
+      summary.struckOut?.push(carRef(car));
+    }
+  });
 }
 
 // How one car's check went, for the live view. `blocked` means the site's
@@ -389,6 +416,14 @@ async function runScan(runId: string, trigger: "schedule" | "manual", live: Live
   const db = getDb();
   const settings = getScanSettings();
   const summary = live.summary;
+  if (trigger === "schedule") {
+    try {
+      strikeOutLongRemoved(db, summary);
+    } catch (err) {
+      const message = `Couldn't strike out long-removed cars: ${err instanceof Error ? err.message : String(err)}`;
+      summary.problems.push({ id: "", url: "", label: "Scan", message });
+    }
+  }
   // Active cars first: price changes on cars still for sale matter most if
   // the run gets stopped partway. Struck-out cars are skipped — they've been
   // ruled out, and every check is another request to the site.
@@ -509,6 +544,13 @@ export function buildScanEmail(summary: ScanSummary, appUrl: string) {
     },
     { title: "Back on sale", lines: summary.reactivated.map((c) => ({ car: c, detail: "listing is live again" })) },
     { title: "Removed", lines: summary.removed.map((c) => ({ car: c, detail: "listing is gone" })) },
+    {
+      title: "Struck out",
+      lines: (summary.struckOut ?? []).map((c) => ({
+        car: c,
+        detail: `removed for over ${STRIKE_OUT_AFTER_DAYS} days — no longer scanned`,
+      })),
+    },
     {
       title: "Couldn't check",
       lines: summary.problems.filter((p) => p.id).map((p) => ({ car: p, detail: p.message })),
