@@ -3,19 +3,33 @@
 import { useRef, useState } from "react";
 import type { CarPhoto } from "@/lib/types";
 
-// The car's saved listing photos (lib/photos.ts), one at a time. Arrows on
-// either side (wrapping around), plus the keyboard arrows once it has focus
-// and a swipe on touch screens. Clicking the photo opens it full size.
-export function PhotoCarousel({ photos, label }: { photos: CarPhoto[]; label: string }) {
+// The car's saved listing photos (lib/photos.ts) — or, on the add form,
+// `urls` straight from the listing before anything is saved — one at a time.
+// Arrows on either side (wrapping around), plus the keyboard arrows once it
+// has focus and a swipe on touch screens. Clicking the photo opens it full
+// size. `imageHeight` (px) fixes the photo's height instead of a 4:3 box.
+export function PhotoCarousel({
+  photos,
+  urls,
+  label,
+  imageHeight,
+}: {
+  photos?: CarPhoto[];
+  urls?: string[];
+  label: string;
+  imageHeight?: number;
+}) {
   const [index, setIndex] = useState(0);
   const touchStartX = useRef<number | null>(null);
 
-  const count = photos.length;
+  const sources = photos
+    ? photos.map((p) => ({ key: p.id, src: `/photos/${p.id}` }))
+    : (urls ?? []).map((u) => ({ key: u, src: u }));
+  const count = sources.length;
   if (count === 0) return null;
   // The list can shrink under us (a merge, a refresh) — stay in range.
   const current = Math.min(index, count - 1);
   const go = (step: number) => setIndex((current + step + count) % count);
-  const src = (photo: CarPhoto) => `/photos/${photo.id}`;
 
   const arrowClass =
     "absolute top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-2xl leading-none text-white hover:bg-black/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white";
@@ -48,13 +62,15 @@ export function PhotoCarousel({ photos, label }: { photos: CarPhoto[]; label: st
       }}
       className="relative w-full overflow-hidden rounded-lg border border-border bg-black/5 outline-none focus-visible:border-series-1"
     >
-      <a href={src(photos[current])} target="_blank" rel="noreferrer" title="Open full size">
-        {/* eslint-disable-next-line @next/next/no-img-element -- served as-is from our own route; next/image would only re-encode it */}
+      <a href={sources[current].src} target="_blank" rel="noreferrer" title="Open full size">
+        {/* eslint-disable-next-line @next/next/no-img-element -- served as-is; next/image would only re-encode it */}
         <img
-          key={photos[current].id}
-          src={src(photos[current])}
+          key={sources[current].key}
+          src={sources[current].src}
           alt={`${label} — photo ${current + 1} of ${count}`}
-          className="aspect-[4/3] w-full object-contain"
+          referrerPolicy="no-referrer"
+          style={imageHeight ? { height: imageHeight } : undefined}
+          className={`w-full object-contain ${imageHeight ? "" : "aspect-[4/3]"}`}
         />
       </a>
       {count > 1 ? (
@@ -70,7 +86,7 @@ export function PhotoCarousel({ photos, label }: { photos: CarPhoto[]; label: st
           </span>
           {/* Warm the cache for the next photo so stepping through doesn't stall. */}
           {/* eslint-disable-next-line @next/next/no-img-element -- preload only */}
-          <img src={src(photos[(current + 1) % count])} alt="" aria-hidden className="hidden" />
+          <img src={sources[(current + 1) % count].src} alt="" aria-hidden referrerPolicy="no-referrer" className="hidden" />
         </>
       ) : null}
     </div>

@@ -1,8 +1,9 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { AutocompleteInput } from "@/components/AutocompleteInput";
+import { PhotoCarousel } from "@/components/PhotoCarousel";
 import { StepList, type Step } from "@/components/StepList";
 import { checkCarDuplicate, createCar, readListingDetails, relistCar } from "@/lib/actions";
 import type { ListingDetailsResult } from "@/lib/car-service";
@@ -258,6 +259,12 @@ export function NewCarForm({ url, options }: { url: string; options: FieldOption
   // Listing photo URLs found by the pre-fill, downloaded once the car is
   // saved (only ever non-empty with "Save listing photos" on in Settings).
   const [photoUrls, setPhotoUrls] = useState<string[]>([]);
+  // Shown as soon as the read finds them, sized so the photo and every field
+  // down to the save button fit on one screen — see the effect below.
+  const photosRef = useRef<HTMLDivElement>(null);
+  const detailsEndRef = useRef<HTMLDivElement>(null);
+  const [photoHeight, setPhotoHeight] = useState<number | null>(null);
+  const scrolledToPhotos = useRef(false);
   const today = new Date().toISOString().slice(0, 10);
 
   // Reads the listing once on open and fills whatever it found — but only
@@ -336,6 +343,32 @@ export function NewCarForm({ url, options }: { url: string; options: FieldOption
     const timer = setInterval(() => setNow(Date.now()), 200);
     return () => clearInterval(timer);
   }, [prefill.status]);
+
+  // The photo gets whatever height is left once the fields below it fit on
+  // screen (at least 180px, so a phone still shows something; at most 4:3).
+  useLayoutEffect(() => {
+    if (photoUrls.length === 0) return;
+    const fit = () => {
+      const photos = photosRef.current;
+      const end = detailsEndRef.current;
+      if (!photos || !end) return;
+      const below = end.getBoundingClientRect().bottom - photos.getBoundingClientRect().bottom;
+      const margin = 16;
+      const available = window.innerHeight - below - 2 * margin - 2; // 2: the carousel's border
+      setPhotoHeight(Math.round(Math.max(180, Math.min(available, (photos.clientWidth * 3) / 4))));
+    };
+    fit();
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, [photoUrls.length]);
+
+  // Then once, bring the photo to the top of the screen, details under it.
+  useEffect(() => {
+    if (photoHeight == null || scrolledToPhotos.current || !photosRef.current) return;
+    scrolledToPhotos.current = true;
+    const top = photosRef.current.getBoundingClientRect().top + window.scrollY - 16;
+    window.scrollTo({ top, behavior: "smooth" });
+  }, [photoHeight]);
 
   // Narrow model suggestions to the chosen make; an unrecognized (or empty)
   // make falls back to every model seen across all cars.
@@ -454,6 +487,16 @@ export function NewCarForm({ url, options }: { url: string; options: FieldOption
         </p>
       </div>
 
+      {photoUrls.length > 0 ? (
+        <div ref={photosRef} className="sm:col-span-2">
+          <PhotoCarousel
+            urls={photoUrls}
+            label={[make, model].filter(Boolean).join(" ") || "Listing"}
+            imageHeight={photoHeight ?? undefined}
+          />
+        </div>
+      ) : null}
+
       <Field id="make" label="Make">
         <AutocompleteInput
           id="make"
@@ -514,7 +557,7 @@ export function NewCarForm({ url, options }: { url: string; options: FieldOption
         <input id="recorded_at" name="recorded_at" type="date" defaultValue={today} className={inputClass} />
       </Field>
 
-      <div className="sm:col-span-2 space-y-3">
+      <div ref={detailsEndRef} className="sm:col-span-2 space-y-3">
         {error ? <p className="text-sm text-critical">{error}</p> : null}
 
         {duplicate ? (
