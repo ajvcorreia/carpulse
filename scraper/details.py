@@ -346,7 +346,8 @@ def state_value(obj, field):
     return None
 
 
-def from_app_state(docs):
+def state_listing(docs):
+    """The listing's own car object in the page's app state, or None."""
     best_depth, cars = None, []
 
     def visit(node, depth):
@@ -366,15 +367,43 @@ def from_app_state(docs):
 
     for doc in docs:
         visit(doc, 0)
-    found = {}
     if not cars or len({tuple(str(state_value(c, f)) for f in ("make", "model", "year")) for c in cars}) > 1:
+        return None
+    return cars[0]
+
+
+def from_app_state(docs):
+    car = state_listing(docs)
+    found = {}
+    if car is None:
         return found
     for field in STATE_KEYS:
-        raw = state_value(cars[0], field)
+        raw = state_value(car, field)
         value = CONVERTERS[field](raw) if raw is not None else None
         if value is not None:
             found[field] = value
     return found
+
+
+PRICE_KEYS = ("price", "listingPrice", "sellingPrice", "askingPrice")
+CURRENCY_KEYS = ("currency", "priceCurrency", "currencyCode")
+
+
+def app_state_price(docs):
+    """(price, currency or None) from the listing's app-state object. Pages
+    that render client-side put loan and down-payment figures ahead of the
+    price in their text, so the text regex can't be trusted on them."""
+    car = state_listing(docs)
+    if car is None:
+        return None
+    for key in PRICE_KEYS:
+        value = car.get(key)
+        if isinstance(value, (int, float, str)) and not isinstance(value, bool):
+            price = to_int(value, 1)
+            if price:
+                currency = next((car[k] for k in CURRENCY_KEYS if isinstance(car.get(k), str)), None)
+                return float(price), currency
+    return None
 
 
 TAG_RE = re.compile(r"<[^>]+>")

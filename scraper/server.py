@@ -5,7 +5,7 @@ StealthyFetcher (a real headless browser, so most bot protection that blocks
 a plain HTTP request lets it through) and returns what it could find:
 
     {"status": 200, "title": "...", "price": 85000, "currency": "AED",
-     "source": "json-ld" | "meta" | "text" | null, "blocked": false}
+     "source": "json-ld" | "meta" | "state" | "text" | null, "blocked": false}
 
 `blocked` means the site served a bot-protection page instead of the listing.
 `gone_hint` means no price was found and the page says the ad is gone ("no
@@ -22,7 +22,8 @@ Either one with "progress": true in the body streams newline-delimited JSON
 instead — each step as it starts and ends, then the result (see _stream).
 
 `source` says how confident to be: "json-ld"/"meta" come from the page's own
-structured data (what the site tells search engines the price is), "text" is
+structured data (what the site tells search engines the price is), "state"
+from the listing's object in the page's app state (see details.py), "text" is
 a best-effort regex over the visible page text and can pick up the wrong
 number (a monthly payment, a similar-car widget...).
 
@@ -40,7 +41,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from scrapling.fetchers import StealthyFetcher
 
-from details import app_state_blobs, best_srcset, extract_details, extract_images, is_index_page, parse_json_blobs, walk_single
+from details import app_state_blobs, app_state_price, best_srcset, extract_details, extract_images, is_index_page, parse_json_blobs, walk_single
 
 PORT = int(os.environ.get("PORT", "8000"))
 FETCH_TIMEOUT_MS = int(os.environ.get("FETCH_TIMEOUT_MS", "60000"))
@@ -168,7 +169,7 @@ def html_image_urls(page):
     return urls
 
 
-SOURCE_NAMES = {"json-ld": "structured data", "meta": "page tags", "text": "page text"}
+SOURCE_NAMES = {"json-ld": "structured data", "meta": "page tags", "state": "listing data", "text": "page text"}
 
 
 def current_locale():
@@ -280,6 +281,7 @@ def scrape(url, with_details=False, progress=None):
     extractors = (
         ("json-ld", lambda: from_json_ld(page)),
         ("meta", lambda: from_meta(page)),
+        ("state", lambda: app_state_price(parse_json_blobs(app_state_blobs(page.css("script:not([src])::text").getall())))),
         ("text", lambda: from_text(html)),
     )
     for source, extract in extractors:

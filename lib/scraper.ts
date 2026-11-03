@@ -19,7 +19,7 @@ export type ScrapeResponse = {
   title: string | null;
   price: number | null;
   currency: string | null;
-  source: "json-ld" | "meta" | "text" | null;
+  source: "json-ld" | "meta" | "state" | "text" | null;
   blocked?: boolean;
   // No price, and the page says the ad is gone — for sites that don't 404.
   gone_hint?: boolean;
