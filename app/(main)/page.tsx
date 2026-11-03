@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AddUrlForm } from "@/components/AddUrlForm";
 import { CarsTable } from "@/components/CarsTable";
 import { ScanLiveButton } from "@/components/ScanLiveButton";
 import { UndoBar } from "@/components/UndoBar";
@@ -41,18 +42,7 @@ export default async function DashboardPage({
             </Link>
           </div>
         </div>
-        <form action="/add" method="GET" className="flex gap-2">
-          <input
-            name="url"
-            type="url"
-            required
-            placeholder="Paste a car listing URL…"
-            className="flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-series-1"
-          />
-          <button type="submit" className="rounded-lg bg-series-1 px-4 py-2 text-sm font-medium text-white">
-            Check
-          </button>
-        </form>
+        <AddUrlForm />
         <UndoBar last={getLastUndo()} />
       </div>
 
