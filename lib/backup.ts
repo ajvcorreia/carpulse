@@ -30,13 +30,13 @@ export function listBackups(): BackupFile[] {
     .sort()
     .reverse()
     .map((name) => {
-      const stat = statSync(/* turbopackIgnore: true */ join(BACKUP_DIR, name));
+      const stat = statSync(join(/* turbopackIgnore: true */ BACKUP_DIR, name));
       return { name, date: NAME.exec(name)![1], size: stat.size, created_at: stat.mtime.toISOString() };
     });
 }
 
 export function hasBackupFor(date: string) {
-  return existsSync(/* turbopackIgnore: true */ join(BACKUP_DIR, `carpulse-${date}.db`));
+  return existsSync(join(/* turbopackIgnore: true */ BACKUP_DIR, `carpulse-${date}.db`));
 }
 
 // Writes the backup for `date` (local, "YYYY-MM-DD"), replacing one already
@@ -45,7 +45,7 @@ export function hasBackupFor(date: string) {
 export function createBackup(date: string): BackupFile {
   mkdirSync(/* turbopackIgnore: true */ BACKUP_DIR, { recursive: true });
   const name = `carpulse-${date}.db`;
-  const path = join(BACKUP_DIR, name);
+  const path = join(/* turbopackIgnore: true */ BACKUP_DIR, name);
   const tmp = `${path}.tmp`;
   rmSync(/* turbopackIgnore: true */ tmp, { force: true });
   getDb().exec(`VACUUM INTO '${tmp.replace(/'/g, "''")}'`);
@@ -53,7 +53,7 @@ export function createBackup(date: string): BackupFile {
   renameSync(/* turbopackIgnore: true */ tmp, /* turbopackIgnore: true */ path);
 
   const all = listBackups();
-  for (const old of all.slice(KEEP)) rmSync(/* turbopackIgnore: true */ join(BACKUP_DIR, old.name), { force: true });
+  for (const old of all.slice(KEEP)) rmSync(join(/* turbopackIgnore: true */ BACKUP_DIR, old.name), { force: true });
   return all.find((b) => b.name === name)!;
 }
 
@@ -73,6 +73,6 @@ export async function backupDownload(name: string): Promise<Response> {
 // so a request can't reach anything else on disk.
 export function backupFilePath(name: string): string | null {
   if (!NAME.test(name)) return null;
-  const path = join(BACKUP_DIR, name);
+  const path = join(/* turbopackIgnore: true */ BACKUP_DIR, name);
   return existsSync(/* turbopackIgnore: true */ path) ? path : null;
 }

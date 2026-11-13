@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { getDb, withTransaction } from "@/lib/db/client";
-import { sendEmail } from "@/lib/email";
+import { sendEmail, type InlineImage } from "@/lib/email";
 import { formatPrice } from "@/lib/format";
-import { carHasPhotos, grabPhotosIfMissing } from "@/lib/photos";
+import { carHasPhotos, grabPhotosIfMissing, mainPhotoThumbnail } from "@/lib/photos";
 import { callScraper, isGone, normalizeCurrency, type ScraperStep } from "@/lib/scraper";
 import { getEmailSettings, getPhotoSettings, getScanSettings, type EmailSettings } from "@/lib/settings";
 
@@ -527,11 +527,98 @@ function escapeHtml(s: string) {
   );
 }
 
-export function buildScanEmail(summary: ScanSummary, appUrl: string) {
-  const base = appUrl.replace(/\/$/, "");
-  const link = (c: CarRef) => (base ? `${base}/?highlight=${c.id}` : c.url);
+// What a scan email's card shows beyond the summary itself — looked up when
+// the email goes out (see sendScanEmail). `photoCid` names the embedded
+// thumbnail of the car's main photo.
+export type EmailCarDetails = {
+  km: number | null;
+  spec: string | null;
+  price: number | null;
+  currency: string | null;
+  photoCid: string | null;
+};
 
-  const sections: { title: string; lines: { car: CarRef; detail: string }[] }[] = [
+type CardKind = "price" | "back" | "removed" | "struck" | "problem";
+
+const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
+const GOOD = "#006300";
+const BAD = "#d03b3b";
+const MUTED = "#71717a";
+
+// Big enough to hit with a thumb (~46px tall). Inline styles only — mail
+// apps drop <style> blocks.
+function emailButton(href: string, label: string, primary: boolean) {
+  const colors = primary
+    ? "background:#2a78d6;color:#ffffff;border:1px solid #2a78d6"
+    : "background:#ffffff;color:#2a78d6;border:1px solid #c9d7ea";
+  return `<a href="${escapeHtml(href)}" style="display:inline-block;margin:0 8px 0 0;padding:12px 18px;border-radius:8px;font-size:15px;font-weight:600;line-height:20px;text-decoration:none;${colors}">${escapeHtml(label)}</a>`;
+}
+
+// One car: main photo on the left; name, mileage/spec, price and what
+// changed on the right; buttons underneath.
+function emailCard(
+  car: CarRef,
+  kind: CardKind,
+  details: EmailCarDetails | undefined,
+  link: string | null,
+  change?: { previous: number | null; price: number; currency: string },
+  message?: string
+) {
+  const href = link ?? car.url;
+  const meta = [details?.km != null ? `${details.km.toLocaleString("en-US")} km` : null, details?.spec]
+    .filter(Boolean)
+    .join(" · ");
+
+  const price = change ?? (details?.price != null ? { price: details.price, currency: details.currency ?? "AED" } : null);
+  let note: string;
+  if (kind === "price" && change && change.previous != null) {
+    const drop = change.price < change.previous;
+    note = `<span style="color:${drop ? GOOD : BAD};font-weight:600">${drop ? "▼" : "▲"} ${escapeHtml(
+      formatPrice(Math.abs(change.price - change.previous), change.currency)
+    )}</span> <span style="color:${MUTED}">from ${escapeHtml(formatPrice(change.previous, change.currency))}</span>`;
+  } else if (kind === "price") {
+    note = `<span style="color:${MUTED}">first price recorded</span>`;
+  } else if (kind === "back") {
+    note = `<span style="color:${GOOD};font-weight:600">● Back on sale</span>`;
+  } else if (kind === "removed") {
+    note = `<span style="color:${BAD};font-weight:600">● Removed</span> <span style="color:${MUTED}">· last price</span>`;
+  } else if (kind === "struck") {
+    note = `<span style="color:${MUTED};font-weight:600">● Struck out</span> <span style="color:${MUTED}">· removed for over ${STRIKE_OUT_AFTER_DAYS} days, no longer scanned</span>`;
+  } else {
+    note = `<span style="color:${BAD};font-weight:600">● Couldn't check</span> <span style="color:${MUTED}">· ${escapeHtml(message ?? "")}</span>`;
+  }
+
+  const faded = kind === "removed" || kind === "struck";
+  const photo = details?.photoCid
+    ? `<img src="cid:${details.photoCid}" width="120" height="90" alt="" style="display:block;width:120px;height:90px;border:0;border-radius:8px;${faded ? "opacity:.6;" : ""}">`
+    : `<div style="width:120px;height:90px;border-radius:8px;background:#e4e4e7"></div>`;
+
+  // A gone listing has no ad to view; without an app URL the car's own
+  // button already goes to the ad.
+  const buttons = link
+    ? emailButton(link, "Open in CarPulse", true) + (faded ? "" : emailButton(car.url, "View ad ↗", false))
+    : emailButton(car.url, "View ad ↗", true);
+
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 12px;background:#ffffff;border:1px solid #e4e4e7;border-radius:12px;border-collapse:separate">
+<tr>
+<td width="120" valign="top" style="padding:14px 0 0 14px"><a href="${escapeHtml(href)}">${photo}</a></td>
+<td valign="top" style="padding:12px 14px 0 12px">
+<a href="${escapeHtml(href)}" style="font-size:16px;font-weight:700;line-height:21px;color:#18181b;text-decoration:none">${escapeHtml(car.label)}</a>
+${meta ? `<div style="margin-top:2px;font-size:13px;line-height:18px;color:${MUTED}">${escapeHtml(meta)}</div>` : ""}
+${price ? `<div style="margin-top:4px;font-size:18px;font-weight:700;line-height:24px;color:#18181b">${escapeHtml(formatPrice(price.price, price.currency))}</div>` : ""}
+<div style="font-size:13px;line-height:18px">${note}</div>
+</td>
+</tr>
+<tr><td colspan="2" style="padding:12px 14px 14px">${buttons}</td></tr>
+</table>`;
+}
+
+export function buildScanEmail(summary: ScanSummary, appUrl: string, cars: Record<string, EmailCarDetails> = {}) {
+  const base = appUrl.replace(/\/$/, "");
+  const appLink = (c: CarRef) => (base ? `${base}/?highlight=${c.id}` : null);
+  const link = (c: CarRef) => appLink(c) ?? c.url;
+
+  const sections: { title: string; lines: { car: CarRef; detail: string; card: string }[] }[] = [
     {
       title: "Price changes",
       lines: summary.priceChanges.map((c) => ({
@@ -540,20 +627,38 @@ export function buildScanEmail(summary: ScanSummary, appUrl: string) {
           c.previous != null
             ? `${formatPrice(c.previous, c.currency)} → ${formatPrice(c.price, c.currency)}`
             : formatPrice(c.price, c.currency),
+        card: emailCard(c, "price", cars[c.id], appLink(c), c),
       })),
     },
-    { title: "Back on sale", lines: summary.reactivated.map((c) => ({ car: c, detail: "listing is live again" })) },
-    { title: "Removed", lines: summary.removed.map((c) => ({ car: c, detail: "listing is gone" })) },
+    {
+      title: "Back on sale",
+      lines: summary.reactivated.map((c) => ({
+        car: c,
+        detail: "listing is live again",
+        card: emailCard(c, "back", cars[c.id], appLink(c)),
+      })),
+    },
+    {
+      title: "Removed",
+      lines: summary.removed.map((c) => ({
+        car: c,
+        detail: "listing is gone",
+        card: emailCard(c, "removed", cars[c.id], appLink(c)),
+      })),
+    },
     {
       title: "Struck out",
       lines: (summary.struckOut ?? []).map((c) => ({
         car: c,
         detail: `removed for over ${STRIKE_OUT_AFTER_DAYS} days — no longer scanned`,
+        card: emailCard(c, "struck", cars[c.id], appLink(c)),
       })),
     },
     {
       title: "Couldn't check",
-      lines: summary.problems.filter((p) => p.id).map((p) => ({ car: p, detail: p.message })),
+      lines: summary.problems
+        .filter((p) => p.id)
+        .map((p) => ({ car: p, detail: p.message, card: emailCard(p, "problem", cars[p.id], appLink(p), undefined, p.message) })),
     },
   ].filter((s) => s.lines.length > 0);
 
@@ -569,25 +674,83 @@ export function buildScanEmail(summary: ScanSummary, appUrl: string) {
           .map((s) => `${s.title}\n${s.lines.map((l) => `- ${l.car.label}: ${l.detail}\n  ${link(l.car)}`).join("\n")}`)
           .join("\n\n");
 
+  const struck = summary.struckOut?.length ?? 0;
+  const counts = [
+    `${n} price change${n === 1 ? "" : "s"}`,
+    `${summary.reactivated.length} back on sale`,
+    `${summary.removed.length} removed`,
+    ...(struck ? [`${struck} struck out`] : []),
+  ].join(" · ");
+
   const body =
     sections.length === 0
-      ? "<p>No changes found in this scan.</p>"
+      ? `<div style="padding:16px;background:#ffffff;border:1px solid #e4e4e7;border-radius:12px;font-size:15px;color:#52525b">No changes found in this scan.</div>`
       : sections
           .map(
             (s) =>
-              `<h3 style="margin:16px 0 4px">${escapeHtml(s.title)}</h3><ul style="margin:0;padding-left:20px">${s.lines
-                .map(
-                  (l) =>
-                    `<li><a href="${escapeHtml(link(l.car))}">${escapeHtml(l.car.label)}</a>: ${escapeHtml(l.detail)}</li>`
-                )
-                .join("")}</ul>`
+              `<div style="padding:8px 4px;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:${MUTED}">${escapeHtml(
+                s.title
+              )}</div>${s.lines.map((l) => l.card).join("")}`
           )
           .join("");
 
-  return { subject, text, html: `<div style="font-family:sans-serif;font-size:14px">${body}</div>` };
+  const html = `<div style="margin:0;padding:16px 10px;background:#f4f4f5;font-family:${FONT}">
+<div style="max-width:600px;margin:0 auto">
+<div style="padding:4px 4px 12px">
+<div style="font-size:20px;font-weight:700;color:#18181b">CarPulse scan</div>
+<div style="margin-top:2px;font-size:15px;color:#52525b">${escapeHtml(counts)}</div>
+</div>
+${body}
+${base ? `<div style="padding:8px 0 4px;text-align:center">${emailButton(base, "Open CarPulse", true).replace("margin:0 8px 0 0", "margin:0")}</div>` : ""}
+</div>
+</div>`;
+
+  return { subject, text, html };
+}
+
+// Each card's mileage, spec and latest price, plus its main photo as an
+// embedded thumbnail. A car whose details can't be read still gets a card,
+// just without them.
+export async function emailCarDetails(summary: ScanSummary) {
+  const ids = Array.from(
+    new Set(
+      [
+        ...summary.priceChanges,
+        ...summary.reactivated,
+        ...summary.removed,
+        ...(summary.struckOut ?? []),
+        ...summary.problems,
+      ]
+        .map((c) => c.id)
+        .filter(Boolean)
+    )
+  );
+  const db = getDb();
+  const carRow = db.prepare("select km, spec from cars where id = ?");
+  const priceRow = db.prepare(
+    "select price, currency from price_history where car_id = ? order by recorded_at desc, created_at desc limit 1"
+  );
+  const cars: Record<string, EmailCarDetails> = {};
+  const images: InlineImage[] = [];
+  for (const id of ids) {
+    const car = carRow.get(id) as { km: number | null; spec: string | null } | undefined;
+    const price = priceRow.get(id) as { price: number; currency: string } | undefined;
+    const thumb = await mainPhotoThumbnail(id);
+    const photoCid = thumb ? `car-${id}@carpulse` : null;
+    if (thumb && photoCid) images.push({ filename: `${id}.jpg`, content: thumb, cid: photoCid, contentType: "image/jpeg" });
+    cars[id] = {
+      km: car?.km ?? null,
+      spec: car?.spec ?? null,
+      price: price?.price ?? null,
+      currency: price?.currency ?? null,
+      photoCid,
+    };
+  }
+  return { cars, images };
 }
 
 async function sendScanEmail(email: EmailSettings, summary: ScanSummary) {
-  const { subject, text, html } = buildScanEmail(summary, email.appUrl);
-  await sendEmail(email, subject, text, html);
+  const { cars, images } = await emailCarDetails(summary);
+  const { subject, text, html } = buildScanEmail(summary, email.appUrl, cars);
+  await sendEmail(email, subject, text, html, images);
 }

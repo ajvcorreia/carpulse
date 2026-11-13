@@ -8,7 +8,16 @@ export function emailConfigProblem(s: EmailSettings): string | null {
   return null;
 }
 
-export async function sendEmail(s: EmailSettings, subject: string, text: string, html: string) {
+// An image the HTML shows inline as <img src="cid:{cid}">.
+export type InlineImage = { filename: string; content: Buffer; cid: string; contentType: string };
+
+export async function sendEmail(
+  s: EmailSettings,
+  subject: string,
+  text: string,
+  html: string,
+  attachments: InlineImage[] = []
+) {
   const problem = emailConfigProblem(s);
   if (problem) throw new Error(problem);
 
@@ -19,5 +28,5 @@ export async function sendEmail(s: EmailSettings, subject: string, text: string,
     auth: s.smtpUser ? { user: s.smtpUser, pass: s.smtpPassword } : undefined,
     connectionTimeout: 20_000,
   });
-  await transport.sendMail({ from: s.from || s.smtpUser, to: s.to, subject, text, html });
+  await transport.sendMail({ from: s.from || s.smtpUser, to: s.to, subject, text, html, attachments });
 }

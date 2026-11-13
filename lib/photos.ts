@@ -122,8 +122,8 @@ async function savePhotos(carId: string, urls: string[], referer: string): Promi
     const id = randomUUID();
     return { ...p, id, position, file: `${carId}/${id}.${EXTENSIONS[p.contentType]}` };
   });
-  await mkdir(/* turbopackIgnore: true */ join(PHOTOS_DIR, carId), { recursive: true });
-  for (const r of rows) await writeFile(/* turbopackIgnore: true */ join(PHOTOS_DIR, r.file), r.bytes);
+  await mkdir(join(/* turbopackIgnore: true */ PHOTOS_DIR, carId), { recursive: true });
+  for (const r of rows) await writeFile(join(/* turbopackIgnore: true */ PHOTOS_DIR, r.file), r.bytes);
 
   const db = getDb();
   const saved = withTransaction(db, () => {
@@ -170,17 +170,37 @@ export function getPhotoFiles(carId: string): string[] {
 }
 
 export function photoFileExists(file: string) {
-  return existsSync(/* turbopackIgnore: true */ join(PHOTOS_DIR, file));
+  return existsSync(join(/* turbopackIgnore: true */ PHOTOS_DIR, file));
 }
 
 export async function deletePhotoFiles(files: string[]) {
   const dirs = new Set<string>();
   for (const file of files) {
-    await rm(/* turbopackIgnore: true */ join(PHOTOS_DIR, file), { force: true }).catch(() => {});
+    await rm(join(/* turbopackIgnore: true */ PHOTOS_DIR, file), { force: true }).catch(() => {});
     dirs.add(dirname(file));
   }
   // Drop a car's folder once it's empty (rmdir refuses, harmlessly, if not).
-  for (const dir of dirs) await rmdir(/* turbopackIgnore: true */ join(PHOTOS_DIR, dir)).catch(() => {});
+  for (const dir of dirs) await rmdir(join(/* turbopackIgnore: true */ PHOTOS_DIR, dir)).catch(() => {});
+}
+
+// The car's main photo as a small JPEG for the scan email, which embeds it
+// (the /photos route is behind the login, out of a mail app's reach). Null
+// when the car has no photos or the file can't be read.
+export async function mainPhotoThumbnail(carId: string, width = 240, height = 180): Promise<Buffer | null> {
+  const row = getDb()
+    .prepare("select file from car_photos where car_id = ? order by position asc limit 1")
+    .get(carId) as { file: string } | undefined;
+  if (!row) return null;
+  try {
+    const { default: sharp } = await import("sharp");
+    return await sharp(join(/* turbopackIgnore: true */ PHOTOS_DIR, row.file))
+      .rotate()
+      .resize(width, height, { fit: "cover" })
+      .jpeg({ quality: 72 })
+      .toBuffer();
+  } catch {
+    return null;
+  }
 }
 
 export async function readPhoto(id: string): Promise<{ bytes: Buffer; contentType: string } | null> {
@@ -189,7 +209,7 @@ export async function readPhoto(id: string): Promise<{ bytes: Buffer; contentTyp
     | undefined;
   if (!row) return null;
   try {
-    const bytes = await readFile(/* turbopackIgnore: true */ join(PHOTOS_DIR, row.file));
+    const bytes = await readFile(join(/* turbopackIgnore: true */ PHOTOS_DIR, row.file));
     return { bytes, contentType: row.content_type };
   } catch {
     return null;
