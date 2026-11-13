@@ -15,7 +15,12 @@ WORKDIR /app
 # which can lag a version behind and expect a different build — so fetch
 # patchright's own Chromium too, or launches fail with "Executable doesn't
 # exist".
-RUN pip install --no-cache-dir "scrapling[fetchers]==0.4.15" \
+#
+# libatomic1: the browser installer's bundled node needs it, and newer
+# python:3.12-slim bases no longer ship it.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libatomic1 \
+    && pip install --no-cache-dir "scrapling[fetchers]==0.4.15" \
     && scrapling install \
     && patchright install chromium \
     && rm -rf /var/lib/apt/lists/*
