@@ -1,16 +1,28 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import type { CarFields } from "@/lib/car-service";
+import { blockedFor, clientIp, minutesLeft, recordFailure, safeEqual } from "@/lib/lockout";
 
-// Every /api route is gated by a single shared key (not the LAN-only trust
-// model the UI relies on) since this API is built for scripts/agents to call
-// unattended, possibly from outside the VM itself.
+// Every /api route is gated by a single shared key (not the UI's sign-in)
+// since this API is built for scripts/agents to call unattended, possibly
+// from outside the VM itself. Wrong keys count toward the same lockout as
+// wrong passwords (lib/lockout.ts); a request with no key at all doesn't.
 export function checkApiKey(req: Request): NextResponse | null {
   const expected = process.env.CARPULSE_API_KEY;
   if (!expected) {
     return NextResponse.json({ error: "API key not configured on the server." }, { status: 500 });
   }
-  if (req.headers.get("x-api-key") !== expected) {
+  const ip = clientIp(req.headers);
+  const wait = blockedFor(ip);
+  if (wait) {
+    return NextResponse.json(
+      { error: `Too many wrong API keys. Try again in ${minutesLeft(wait)}.` },
+      { status: 429, headers: { "Retry-After": String(Math.ceil(wait / 1000)) } }
+    );
+  }
+  const given = req.headers.get("x-api-key");
+  if (given == null || !safeEqual(given, expected)) {
+    if (given != null) recordFailure(ip, "API key");
     return NextResponse.json({ error: "Invalid or missing API key." }, { status: 401 });
   }
   return null;

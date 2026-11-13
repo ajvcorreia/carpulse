@@ -7,9 +7,10 @@ services:
       - "3000:3000"
     environment:
       CARPULSE_API_KEY: ${CARPULSE_API_KEY:?set CARPULSE_API_KEY in .env or the environment}
-      # Optional: set both to put a login prompt in front of the UI. Leave
+      # Optional: set both to put a sign-in page in front of the UI. Leave
       # either blank (the default) and the app stays open to anyone who can
-      # reach it, same as before.
+      # reach it, same as before. Only used for the first sign-in; after
+      # that the password is changed in Settings (see the README).
       AUTH_USERNAME: ${AUTH_USERNAME:-}
       AUTH_PASSWORD: ${AUTH_PASSWORD:-}
       # The Scrapling sidecar below, reached over the compose network — it's

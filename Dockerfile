@@ -26,6 +26,8 @@ RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+# For `docker compose exec carpulse node scripts/reset-login.mjs` (README).
+COPY --from=builder /app/scripts/reset-login.mjs ./scripts/reset-login.mjs
 
 # SQLite file lives here by default (see DATABASE_PATH) — a named volume
 # mounted at this path is what makes data survive `docker run` recreating

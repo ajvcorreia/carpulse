@@ -95,8 +95,8 @@ aren't part of **Export**.
 
 Next.js (App Router) + SQLite (via Node's built-in `node:sqlite`). Single-user,
 no accounts. By default access control is just the VM being on a private
-network; set `AUTH_USERNAME`/`AUTH_PASSWORD` (see below) to put a login
-prompt in front of the UI too. The whole database is one file; back it up by
+network; set `AUTH_USERNAME`/`AUTH_PASSWORD` (see below) to put a sign-in
+page in front of the UI too. The whole database is one file; back it up by
 copying it.
 
 ## Local development
@@ -126,8 +126,8 @@ Pulls `ajvcorreia/carpulse:latest` and stores the database in the
 `carpulse-data` named volume. To build from source instead, uncomment
 `build: .` in `docker-compose.yml`.
 
-To require a login (HTTP Basic Auth) for the UI, also set `AUTH_USERNAME`
-and `AUTH_PASSWORD` in `.env`:
+To require signing in to the UI, also set `AUTH_USERNAME` and
+`AUTH_PASSWORD` in `.env`:
 
 ```bash
 echo "AUTH_USERNAME=your-username" >> .env
@@ -137,6 +137,35 @@ echo "AUTH_PASSWORD=your-password" >> .env
 Leave either unset and the app stays open to anyone who can reach it, same
 as before. This doesn't cover `/api/*` — that's gated separately by
 `CARPULSE_API_KEY`.
+
+These two are only used for the **first** sign-in, which saves the login in
+the database (password as an scrypt hash). After that:
+
+- **Change the password** in Settings → Sign-in (signs out other devices).
+  Editing `.env` no longer changes it.
+- **"Keep me signed in"** lasts 90 days from the last visit by default;
+  change it in Settings → Sign-in. "Sign out all devices" is there too.
+- **Three wrong passwords** from one address within 10 minutes block it for
+  10 minutes, even with the right password, and email you (if email is set
+  up). Wrong `X-API-Key`s on `/api/*` count the same way (answered with
+  `429`). Blocks are kept in memory, so restarting the app clears them.
+  Behind Cloudflare the address is the visitor's real one
+  (`CF-Connecting-IP`).
+
+#### Forgot the password
+
+"Forgot password?" on the sign-in page emails a one-time link (valid 30
+minutes) to the scan email's recipient (Settings → Email updates), at most
+one every 5 minutes.
+
+If email isn't working, reset the login on the server — it forgets the
+stored login and signs everyone out, so the next sign-in uses
+`AUTH_USERNAME`/`AUTH_PASSWORD` from `.env` again (edit those first, then
+`docker compose up -d`, if you don't remember them either):
+
+```bash
+docker compose exec carpulse node scripts/reset-login.mjs
+```
 
 ### Plain `docker run`
 

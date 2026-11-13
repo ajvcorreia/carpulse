@@ -126,4 +126,29 @@ export const MIGRATIONS: { version: string; sql: string }[] = [
       end;
     `,
   },
+  // Sign-in (lib/auth.ts): one row per signed-in browser, and the one-time
+  // links "Forgot password?" emails. Both keep only a SHA-256 of the token
+  // the browser or link holds, so a copy of the database can't sign anyone
+  // in. `persistent` = "Keep me signed in" was ticked.
+  {
+    version: "0008_auth",
+    sql: `
+      create table auth_sessions (
+        id text primary key,
+        persistent integer not null,
+        created_at text not null,
+        last_seen_at text not null,
+        expires_at text not null,
+        ip text,
+        user_agent text
+      );
+
+      create table auth_reset_tokens (
+        id text primary key,
+        created_at text not null,
+        expires_at text not null,
+        used_at text
+      );
+    `,
+  },
 ];

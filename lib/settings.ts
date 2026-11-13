@@ -83,6 +83,27 @@ export type PhotoSettings = {
 
 export const DEFAULT_PHOTO_SETTINGS: PhotoSettings = { enabled: false };
 
+export type LoginSettings = {
+  // How long "Keep me signed in" lasts without visiting; each visit
+  // restarts it.
+  sessionDays: number;
+};
+
+export const DEFAULT_LOGIN_SETTINGS: LoginSettings = { sessionDays: 90 };
+
+export const getLoginSettings = () => read("login", DEFAULT_LOGIN_SETTINGS);
+export const saveLoginSettings = (s: LoginSettings) => write("login", s);
+
+// The sign-in username and scrypt hash (lib/auth.ts). Never sent to a
+// client; absent until the first sign-in copies AUTH_USERNAME/PASSWORD.
+export type Credentials = { username: string; passwordHash: string };
+
+export function getCredentials(): Credentials | null {
+  const c = read<Partial<Credentials>>("auth_credentials", {});
+  return c.username && c.passwordHash ? { username: c.username, passwordHash: c.passwordHash } : null;
+}
+export const saveCredentials = (c: Credentials) => write("auth_credentials", c);
+
 export function getScanSettings(): ScanSettings {
   // Not spread over the defaults first: a row saved back when there was a
   // single `time` would otherwise pick up the default `times` instead.

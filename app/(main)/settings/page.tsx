@@ -5,12 +5,20 @@ import {
   PhotoSettingsForm,
   ScanRunsPanel,
   ScanSettingsForm,
+  SignInSettings,
 } from "@/components/SettingsForms";
+import { authEnabled, countSessions, currentUsername, MIN_PASSWORD_LENGTH } from "@/lib/auth";
 import { listBackups } from "@/lib/backup";
 import { getDb } from "@/lib/db/client";
 import { countCarsWithPhotos } from "@/lib/photos";
 import { getRecentScanRuns, isScanRunning } from "@/lib/scan";
-import { getEmailSettings, getLastScheduledSlot, getPhotoSettings, getScanSettings } from "@/lib/settings";
+import {
+  getEmailSettings,
+  getLastScheduledSlot,
+  getLoginSettings,
+  getPhotoSettings,
+  getScanSettings,
+} from "@/lib/settings";
 
 // Reads the database on every request — never prerender at build time.
 export const dynamic = "force-dynamic";
@@ -89,6 +97,25 @@ export default async function SettingsPage() {
           </p>
         </div>
         <BackupsPanel backups={listBackups()} timezone={scan.timezone} />
+      </section>
+
+      <section className="space-y-3">
+        <div className="space-y-1">
+          <h2 className="font-medium">Sign-in</h2>
+          <p className="text-sm text-text-secondary">
+            {authEnabled()
+              ? "Three wrong passwords from the same address block it for 10 minutes (you get an email when that happens). Forgot the password? “Forgot password?” on the sign-in page emails a reset link to the address above."
+              : "Sign-in is off, so anyone who can reach this page can use CarPulse. Set AUTH_USERNAME and AUTH_PASSWORD in .env and restart to turn it on."}
+          </p>
+        </div>
+        {authEnabled() ? (
+          <SignInSettings
+            username={currentUsername() ?? ""}
+            settings={getLoginSettings()}
+            sessions={countSessions()}
+            minPasswordLength={MIN_PASSWORD_LENGTH}
+          />
+        ) : null}
       </section>
     </div>
   );

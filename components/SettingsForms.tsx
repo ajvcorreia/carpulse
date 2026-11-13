@@ -12,9 +12,10 @@ import {
   sendTestEmailAction,
   stopScanAction,
 } from "@/lib/settings-actions";
+import { changePasswordAction, saveLoginSettingsAction, signOutEverywhereAction } from "@/lib/auth-actions";
 import type { BackupFile } from "@/lib/backup";
 import type { ScanRunRow, ScanSummary } from "@/lib/scan";
-import type { EmailSettings, PhotoSettings, ScanSettings } from "@/lib/settings";
+import type { EmailSettings, LoginSettings, PhotoSettings, ScanSettings } from "@/lib/settings";
 import { formatPrice } from "@/lib/format";
 
 const inputClass =
@@ -75,6 +76,110 @@ export function PhotoSettingsForm({ settings }: { settings: PhotoSettings }) {
         <ResultLine result={result} />
       </div>
     </form>
+  );
+}
+
+export function SignInSettings({
+  username,
+  settings,
+  sessions,
+  minPasswordLength,
+}: {
+  username: string;
+  settings: LoginSettings;
+  sessions: number;
+  minPasswordLength: number;
+}) {
+  const [daysResult, saveDays, savingDays] = useActionState(saveLoginSettingsAction, null);
+  const [passwordResult, changePassword, changing] = useActionState(changePasswordAction, null);
+  const [signingOut, startSigningOut] = useTransition();
+  const passwordForm = useRef<HTMLFormElement>(null);
+
+  // Clear the three password boxes once the change went through.
+  useEffect(() => {
+    if (passwordResult?.ok) passwordForm.current?.reset();
+  }, [passwordResult]);
+
+  return (
+    <div className="space-y-4">
+      <form action={saveDays} className="space-y-3 rounded-lg border border-border p-4">
+        <Field
+          id="sessionDays"
+          label="Keep me signed in for (days)"
+          hint="Counted from the last visit, so you're only asked again after this long without using CarPulse."
+        >
+          <input
+            id="sessionDays"
+            name="sessionDays"
+            type="number"
+            min={1}
+            max={365}
+            required
+            defaultValue={settings.sessionDays}
+            className={`${inputClass} sm:max-w-40`}
+          />
+        </Field>
+        <div className="flex flex-wrap items-center gap-3">
+          <button type="submit" disabled={savingDays} className={primaryButtonClass}>
+            {savingDays ? "Saving…" : "Save"}
+          </button>
+          <ResultLine result={daysResult} />
+        </div>
+      </form>
+
+      <form ref={passwordForm} action={changePassword} className="space-y-3 rounded-lg border border-border p-4">
+        <p className="text-sm font-medium">Change password for {username}</p>
+        {/* Lets a password manager tell which account this is for. */}
+        <input type="text" name="username" value={username} autoComplete="username" readOnly hidden />
+        <Field id="current" label="Current password">
+          <input id="current" name="current" type="password" autoComplete="current-password" required className={inputClass} />
+        </Field>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Field id="password" label="New password" hint={`At least ${minPasswordLength} characters.`}>
+            <input
+              id="password"
+              name="password"
+              type="password"
+              autoComplete="new-password"
+              minLength={minPasswordLength}
+              required
+              className={inputClass}
+            />
+          </Field>
+          <Field id="confirm" label="New password again">
+            <input
+              id="confirm"
+              name="confirm"
+              type="password"
+              autoComplete="new-password"
+              minLength={minPasswordLength}
+              required
+              className={inputClass}
+            />
+          </Field>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <button type="submit" disabled={changing} className={primaryButtonClass}>
+            {changing ? "Changing…" : "Change password"}
+          </button>
+          <ResultLine result={passwordResult} />
+        </div>
+      </form>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border p-4">
+        <p className="flex-1 text-sm text-text-secondary">
+          Signed in on {sessions} {sessions === 1 ? "device" : "devices"}.
+        </p>
+        <button
+          type="button"
+          disabled={signingOut}
+          onClick={() => startSigningOut(() => signOutEverywhereAction())}
+          className={buttonClass}
+        >
+          {signingOut ? "Signing out…" : "Sign out all devices"}
+        </button>
+      </div>
+    </div>
   );
 }
 
