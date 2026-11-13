@@ -15,9 +15,13 @@ function requestHost(headers: Headers) {
 
 // Refuses a form posted from another site (browsers send Origin with every
 // POST). Server actions get the same check from Next itself.
+//
+// Some form posts carry `Origin: null` (e.g. under a no-referrer policy);
+// for those, the browser's own Sec-Fetch-Site says where it came from.
 export function sameOrigin(req: Request) {
   const origin = req.headers.get("origin");
   if (!origin) return true;
+  if (origin === "null") return req.headers.get("sec-fetch-site") === "same-origin";
   try {
     return new URL(origin).host === requestHost(req.headers);
   } catch {

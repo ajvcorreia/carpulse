@@ -29,8 +29,9 @@ const nextConfig: NextConfig = {
           },
           { key: "X-Content-Type-Options", value: "nosniff" },
           // Listing sites don't get CarPulse's addresses (or a reset link)
-          // when you open an ad from here.
-          { key: "Referrer-Policy", value: "no-referrer" },
+          // when you open an ad from here. Not "no-referrer": that makes
+          // browsers send `Origin: null` on CarPulse's own form posts.
+          { key: "Referrer-Policy", value: "same-origin" },
           { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
           { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=(), usb=()" },
         ],
